@@ -1,0 +1,21 @@
+{
+  "name": "vitalblaze-retail-suite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace @vitalblaze/api\" \"npm run dev --workspace @vitalblaze/web\"",
+    "build": "npm run build --workspace @vitalblaze/shared && npm run build --workspace @vitalblaze/api && npm run build --workspace @vitalblaze/web",
+    "build:plesk": "npm run build",
+    "start": "node server.js",
+    "start:api": "node apps/api/src/server.js",
+    "lint": "npm run lint --workspace @vitalblaze/api && npm run lint --workspace @vitalblaze/web"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

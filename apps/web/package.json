@@ -1,0 +1,33 @@
+{
+  "name": "@vitalblaze/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "node -e \"console.log('No linter configured for web yet.')\""
+  },
+  "dependencies": {
+    "@vitalblaze/shared": "0.1.0",
+    "@tanstack/react-table": "^8.20.5",
+    "idb": "^8.0.0",
+    "i18next": "^23.12.2",
+    "lucide-react": "^0.408.0",
+    "qrcode.react": "^4.1.0",
+    "react-barcode": "^1.5.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-i18next": "^15.0.1",
+    "react-router-dom": "^6.26.0",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.41",
+    "tailwindcss": "^3.4.10",
+    "vite": "^5.4.2"
+  }
+}

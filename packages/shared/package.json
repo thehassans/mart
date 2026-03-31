@@ -1,0 +1,16 @@
+{
+  "name": "@vitalblaze/shared",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./domain": "./src/domain.js",
+    "./zatca": "./src/zatca.js",
+    "./scale": "./src/scale.js"
+  },
+  "scripts": {
+    "build": "node -e \"console.log('Shared package is source-only and does not require a build step.')\"",
+    "lint": "node -e \"console.log('No linter configured for shared package yet.')\""
+  }
+}

@@ -1,0 +1,98 @@
+export const BUSINESS_TYPES = Object.freeze({
+  BAKALA: 'BAKALA',
+  GROCERY_STORE: 'GROCERY_STORE',
+});
+
+export const USER_ROLES = Object.freeze({
+  SUPER_ADMIN: 'SuperAdmin',
+  STORE_ADMIN: 'StoreAdmin',
+  MANAGER: 'Manager',
+  CASHIER: 'Cashier',
+});
+
+export const PAYMENT_METHODS = Object.freeze({
+  CASH: 'CASH',
+  MADA: 'MADA',
+  CARD: 'CARD',
+  WALLET: 'WALLET',
+});
+
+export const SALE_STATUSES = Object.freeze({
+  COMPLETED: 'COMPLETED',
+  HELD: 'HELD',
+  VOIDED: 'VOIDED',
+  REFUNDED: 'REFUNDED',
+  QUEUED_OFFLINE: 'QUEUED_OFFLINE',
+});
+
+export const PURCHASE_ORDER_STATUSES = Object.freeze({
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+  PARTIALLY_RECEIVED: 'PARTIALLY_RECEIVED',
+  RECEIVED: 'RECEIVED',
+  CANCELLED: 'CANCELLED',
+});
+
+export const SHIFT_STATUSES = Object.freeze({
+  OPEN: 'OPEN',
+  CLOSED: 'CLOSED',
+});
+
+export const PRODUCT_UNITS = Object.freeze({
+  EACH: 'EACH',
+  KG: 'KG',
+  GRAM: 'GRAM',
+  BOX: 'BOX',
+  CASE: 'CASE',
+  LITER: 'LITER',
+});
+
+export const SCALE_BARCODE_PREFIXES = ['20', '21', '22', '23'];
+
+export const TENANT_SUBSCRIPTION_PLANS = Object.freeze({
+  TRIAL_7_DAYS: 'TRIAL_7_DAYS',
+  MONTHS_3: 'MONTHS_3',
+  MONTHS_6: 'MONTHS_6',
+  YEAR_1: 'YEAR_1',
+});
+
+export const CAPABILITIES = Object.freeze({
+  FAST_POS: 'fast_pos',
+  SMART_INVENTORY: 'smart_inventory',
+  ZATCA_EINVOICING: 'zatca_einvoicing',
+  HOLD_RESUME_CARTS: 'hold_resume_carts',
+  WHOLESALE_PROCUREMENT: 'wholesale_procurement',
+  SCALE_INTEGRATION: 'scale_integration',
+  LABEL_PRINTING: 'label_printing',
+  DEPARTMENT_ANALYTICS: 'department_analytics',
+});
+
+export const BUSINESS_TYPE_CAPABILITIES = Object.freeze({
+  [BUSINESS_TYPES.BAKALA]: {
+    enabled: [
+      CAPABILITIES.FAST_POS,
+      CAPABILITIES.SMART_INVENTORY,
+      CAPABILITIES.ZATCA_EINVOICING,
+      CAPABILITIES.HOLD_RESUME_CARTS,
+    ],
+    limited: [
+      CAPABILITIES.WHOLESALE_PROCUREMENT,
+      CAPABILITIES.SCALE_INTEGRATION,
+      CAPABILITIES.LABEL_PRINTING,
+      CAPABILITIES.DEPARTMENT_ANALYTICS,
+    ],
+  },
+  [BUSINESS_TYPES.GROCERY_STORE]: {
+    enabled: [
+      CAPABILITIES.FAST_POS,
+      CAPABILITIES.SMART_INVENTORY,
+      CAPABILITIES.ZATCA_EINVOICING,
+      CAPABILITIES.HOLD_RESUME_CARTS,
+      CAPABILITIES.WHOLESALE_PROCUREMENT,
+      CAPABILITIES.SCALE_INTEGRATION,
+      CAPABILITIES.LABEL_PRINTING,
+      CAPABILITIES.DEPARTMENT_ANALYTICS,
+    ],
+    limited: [],
+  },
+});
