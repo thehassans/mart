@@ -19,6 +19,24 @@ const localizedNameSchema = new mongoose.Schema(
   }
 );
 
+const optionalLocalizedTextSchema = new mongoose.Schema(
+  {
+    en: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    ar: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
 const productSchema = new mongoose.Schema(
   {
     tenantId: {
@@ -42,12 +60,31 @@ const productSchema = new mongoose.Schema(
       type: localizedNameSchema,
       required: true,
     },
+    brand: {
+      type: optionalLocalizedTextSchema,
+      default: () => ({ en: '', ar: '' }),
+    },
     sku: {
       type: String,
       trim: true,
       required: true,
     },
     barcode: {
+      type: String,
+      trim: true,
+      default: undefined,
+    },
+    imageUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    sourceMarketplace: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    sourceUrl: {
       type: String,
       trim: true,
       default: '',

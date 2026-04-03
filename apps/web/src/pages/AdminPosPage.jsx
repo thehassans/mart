@@ -1,19 +1,14 @@
-import { useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import POSInterface from '../components/pos/POSInterface.jsx';
 import BusinessTypeSelector from '../components/ui/BusinessTypeSelector.jsx';
 import WorkspaceHero from '../components/ui/WorkspaceHero.jsx';
-import { demoProducts } from '../data/demo.js';
+import { useCatalogProducts } from '../utils/catalog.js';
 
 export default function AdminPosPage() {
   const { t } = useTranslation();
-  const { businessType, setBusinessType } = useOutletContext();
-
-  const products = useMemo(
-    () => demoProducts.filter((product) => product.businessTypes.includes(businessType)),
-    [businessType]
-  );
+  const { businessType, setBusinessType, session } = useOutletContext();
+  const { products } = useCatalogProducts({ businessType, session });
 
   return (
     <div className="space-y-8">

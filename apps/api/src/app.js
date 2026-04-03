@@ -4,6 +4,7 @@ import morgan from 'morgan';
 import path from 'node:path';
 import { createAnalyticsRouter } from './routes/analytics.routes.js';
 import { createAuthRouter } from './routes/auth.routes.js';
+import { createProductsRouter } from './routes/products.routes.js';
 import { systemRouter } from './routes/system.routes.js';
 import { createTenantRouter } from './routes/tenant.routes.js';
 
@@ -30,6 +31,7 @@ export function createApp({ clientOrigin, jwtSecret, databaseReady = false, stat
   app.use('/api', systemRouter);
   app.use('/api/auth', createAuthRouter({ jwtSecret }));
   app.use('/api/analytics', createAnalyticsRouter({ jwtSecret }));
+  app.use('/api/products', createProductsRouter({ jwtSecret }));
   app.use('/api/tenants', createTenantRouter({ jwtSecret }));
 
   if (staticAssetsPath) {
