@@ -8,8 +8,11 @@ import GlassPanel from '../ui/GlassPanel.jsx';
 import StatusBadge from '../ui/StatusBadge.jsx';
 
 function getInventoryStatus(product) {
-  const expiryDate = new Date(product.expiryDate);
-  const daysToExpiry = Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const expiryDate = product.expiryDate ? new Date(product.expiryDate) : null;
+  const hasValidExpiryDate = Boolean(expiryDate && !Number.isNaN(expiryDate.getTime()));
+  const daysToExpiry = hasValidExpiryDate
+    ? Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null;
 
   if (product.stockQuantity <= 0) {
     return { tone: 'danger', key: 'outOfStock' };
@@ -19,14 +22,14 @@ function getInventoryStatus(product) {
     return { tone: 'warning', key: 'lowStock' };
   }
 
-  if (daysToExpiry <= 10) {
+  if (product.requiresExpiryTracking && daysToExpiry !== null && daysToExpiry <= 10) {
     return { tone: 'warning', key: 'expiringSoon' };
   }
 
   return { tone: 'success', key: 'healthy' };
 }
 
-export default function InventoryDataTable({ businessType, products, onPrintLabel }) {
+export default function InventoryDataTable({ businessType, isLoading = false, products, onPrintLabel }) {
   const { i18n, t } = useTranslation();
   const { isDark } = useAdminTheme();
   const language = i18n.resolvedLanguage === 'ar' ? 'ar' : 'en';
@@ -48,8 +51,8 @@ export default function InventoryDataTable({ businessType, products, onPrintLabe
         product.name.ar,
         product.sku,
         product.barcode,
-        product.category.en,
-        product.category.ar,
+        product.category?.en,
+        product.category?.ar,
       ]
         .join(' ')
         .toLowerCase()
@@ -64,7 +67,13 @@ export default function InventoryDataTable({ businessType, products, onPrintLabe
         header: t('inventory.product'),
         cell: (info) => (
           <div className="flex items-center gap-3 text-start">
-            <img alt={info.getValue()} className="h-12 w-12 rounded-2xl object-cover" src={info.row.original.imageUrl} />
+            {info.row.original.imageUrl ? (
+              <img alt={info.getValue()} className="h-12 w-12 rounded-2xl object-cover" src={info.row.original.imageUrl} />
+            ) : (
+              <div className={isDark ? 'flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 text-xs font-semibold text-slate-400' : 'flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-xs font-semibold text-slate-500'}>
+                {info.getValue().slice(0, 2).toUpperCase()}
+              </div>
+            )}
             <div>
               <div className={isDark ? 'font-medium text-white' : 'font-medium text-slate-900'}>{info.getValue()}</div>
               <div className={isDark ? 'mt-1 text-xs text-slate-400' : 'mt-1 text-xs text-slate-500'}>{info.row.original.brand?.[language] || info.row.original.brand?.en || (info.row.original.isWeighedItem ? t('printer.weightedSticker') : t('printer.shelfLabel'))}</div>
@@ -72,7 +81,7 @@ export default function InventoryDataTable({ businessType, products, onPrintLabe
           </div>
         ),
       }),
-      columnHelper.accessor((row) => row.category[language] || row.category.en, {
+      columnHelper.accessor((row) => row.category?.[language] || row.category?.en || '-', {
         id: 'category',
         header: t('inventory.category'),
       }),
@@ -147,7 +156,13 @@ export default function InventoryDataTable({ businessType, products, onPrintLabe
             ))}
           </thead>
           <tbody className={isDark ? 'divide-y divide-white/5' : 'divide-y divide-slate-100'}>
-            {table.getRowModel().rows.length === 0 ? (
+            {isLoading ? (
+              <tr>
+                <td className={isDark ? 'px-4 py-8 text-center text-sm text-slate-400' : 'px-4 py-8 text-center text-sm text-slate-500'} colSpan={columns.length}>
+                  {t('inventory.loading')}
+                </td>
+              </tr>
+            ) : table.getRowModel().rows.length === 0 ? (
               <tr>
                 <td className={isDark ? 'px-4 py-8 text-center text-sm text-slate-400' : 'px-4 py-8 text-center text-sm text-slate-500'} colSpan={columns.length}>
                   {t('inventory.noRows')}

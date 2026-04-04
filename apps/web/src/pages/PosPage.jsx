@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { BUSINESS_TYPES } from '@vitalblaze/shared';
 import { useTranslation } from 'react-i18next';
 import SiteHeader from '../components/layout/SiteHeader.jsx';
@@ -6,12 +6,16 @@ import MarketingFooter from '../components/marketing/MarketingFooter.jsx';
 import POSInterface from '../components/pos/POSInterface.jsx';
 import BusinessTypeSelector from '../components/ui/BusinessTypeSelector.jsx';
 import WorkspaceHero from '../components/ui/WorkspaceHero.jsx';
-import { useCatalogProducts } from '../utils/catalog.js';
+import { demoProducts } from '../data/demo.js';
 
 export default function PosPage() {
   const { t } = useTranslation();
   const [businessType, setBusinessType] = useState(BUSINESS_TYPES.GROCERY_STORE);
-  const { products } = useCatalogProducts({ businessType });
+
+  const products = useMemo(
+    () => demoProducts.filter((product) => product.businessTypes.includes(businessType)),
+    [businessType]
+  );
 
   return (
     <div>

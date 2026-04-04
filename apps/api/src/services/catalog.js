@@ -1,322 +1,451 @@
-import { BUSINESS_TYPES, PRODUCT_UNITS, resolveScaleBarcodeProduct } from '@vitalblaze/shared';
-import { demoProducts } from '../../../web/src/data/demo.js';
-import { Category } from '../models/Category.js';
-import { Product } from '../models/Product.js';
+import { PRODUCT_UNITS, normalizeBarcode } from '@vitalblaze/shared';
 
-function normalizeLocalizedText(value, fallback = '') {
-  if (typeof value === 'string') {
-    const text = value.trim() || fallback;
+const OPEN_FOOD_FACTS_FIELDS = [
+  'code',
+  'product_name',
+  'product_name_ar',
+  'brands',
+  'image_front_url',
+  'image_url',
+  'quantity',
+  'categories',
+  'categories_tags',
+  'countries',
+  'countries_tags',
+];
+
+const OPEN_FOOD_FACTS_HEADERS = {
+  Accept: 'application/json',
+  'User-Agent': 'BuysialERP/0.1 (support@buysialerp.sa)',
+};
+
+const SAUDI_SEED_PRODUCTS = [
+  {
+    barcode: '6281007023115',
+    brand: { en: 'Almarai', ar: 'المراعي' },
+    name: { en: 'Fresh Milk 2.85L', ar: 'حليب طازج 2.85 لتر' },
+    category: { en: 'Dairy', ar: 'ألبان' },
+    unit: PRODUCT_UNITS.LITER,
+    vatRate: 15,
+    exciseTaxRate: 0,
+    taxCategory: 'STANDARD',
+    requiresExpiryTracking: true,
+    storageTemperature: '2C to 5C',
+    referencePrice: 11,
+    catalogSource: 'saudi_seed',
+  },
+  {
+    barcode: '6281007051347',
+    brand: { en: 'Almarai', ar: 'المراعي' },
+    name: { en: 'Cheese Jar 500g', ar: 'جبنة برطمان 500 جم' },
+    category: { en: 'Dairy', ar: 'ألبان' },
+    unit: PRODUCT_UNITS.GRAM,
+    vatRate: 15,
+    exciseTaxRate: 0,
+    taxCategory: 'STANDARD',
+    requiresExpiryTracking: true,
+    storageTemperature: '2C to 5C',
+    referencePrice: 18.5,
+    catalogSource: 'saudi_seed',
+  },
+  {
+    barcode: '6281007005470',
+    brand: { en: 'Lusine', ar: 'لوسين' },
+    name: { en: 'Sliced Bread 600g', ar: 'خبز شرائح 600 جم' },
+    category: { en: 'Bakery', ar: 'مخبوزات' },
+    unit: PRODUCT_UNITS.GRAM,
+    vatRate: 15,
+    exciseTaxRate: 0,
+    taxCategory: 'STANDARD',
+    requiresExpiryTracking: true,
+    storageTemperature: 'Ambient',
+    referencePrice: 5.5,
+    catalogSource: 'saudi_seed',
+  },
+  {
+    barcode: '6281014020046',
+    brand: { en: 'Abu Kass', ar: 'أبو كاس' },
+    name: { en: 'Basmati Rice 10kg', ar: 'أرز بسمتي 10 كجم' },
+    category: { en: 'Pantry', ar: 'مؤن غذائية' },
+    unit: PRODUCT_UNITS.KG,
+    vatRate: 15,
+    exciseTaxRate: 0,
+    taxCategory: 'STANDARD',
+    requiresExpiryTracking: false,
+    storageTemperature: 'Ambient',
+    referencePrice: 89,
+    catalogSource: 'saudi_seed',
+  },
+  {
+    barcode: '6281017101117',
+    brand: { en: 'Afia', ar: 'عافية' },
+    name: { en: 'Corn Oil 1.5L', ar: 'زيت ذرة 1.5 لتر' },
+    category: { en: 'Pantry', ar: 'مؤن غذائية' },
+    unit: PRODUCT_UNITS.LITER,
+    vatRate: 15,
+    exciseTaxRate: 0,
+    taxCategory: 'STANDARD',
+    requiresExpiryTracking: false,
+    storageTemperature: 'Ambient',
+    referencePrice: 19.95,
+    catalogSource: 'saudi_seed',
+  },
+  {
+    barcode: '6281057011018',
+    brand: { en: 'Indomie', ar: 'إندومي' },
+    name: { en: 'Chicken Flavor 5 Pack', ar: 'نكهة دجاج 5 عبوات' },
+    category: { en: 'Pantry', ar: 'مؤن غذائية' },
+    unit: PRODUCT_UNITS.BOX,
+    vatRate: 15,
+    exciseTaxRate: 0,
+    taxCategory: 'STANDARD',
+    requiresExpiryTracking: false,
+    storageTemperature: 'Ambient',
+    referencePrice: 7.5,
+    catalogSource: 'saudi_seed',
+  },
+  {
+    barcode: '6281006001015',
+    brand: { en: 'Pepsi', ar: 'بيبسي' },
+    name: { en: 'Can 320ml', ar: 'علبة 320 مل' },
+    category: { en: 'Beverages', ar: 'مشروبات' },
+    unit: PRODUCT_UNITS.LITER,
+    vatRate: 15,
+    exciseTaxRate: 50,
+    taxCategory: 'SOFT_DRINK',
+    requiresExpiryTracking: false,
+    storageTemperature: 'Ambient',
+    referencePrice: 3,
+    catalogSource: 'saudi_seed',
+  },
+  {
+    barcode: '9002490100070',
+    brand: { en: 'Red Bull', ar: 'ريد بول' },
+    name: { en: 'Energy Drink 250ml', ar: 'مشروب طاقة 250 مل' },
+    category: { en: 'Energy Drinks', ar: 'مشروبات طاقة' },
+    unit: PRODUCT_UNITS.LITER,
+    vatRate: 15,
+    exciseTaxRate: 100,
+    taxCategory: 'ENERGY_DRINK',
+    requiresExpiryTracking: false,
+    storageTemperature: 'Ambient',
+    referencePrice: 12.5,
+    catalogSource: 'saudi_seed',
+  },
+];
+
+const SAUDI_SEED_BY_BARCODE = new Map(SAUDI_SEED_PRODUCTS.map((product) => [product.barcode, product]));
+
+function trimString(value) {
+  return String(value || '').trim();
+}
+
+function createLocalizedValue(value, fallback = '') {
+  const normalized = trimString(value);
+  const fallbackValue = trimString(fallback);
+  const resolved = normalized || fallbackValue;
+
+  if (!resolved) {
+    return null;
+  }
+
+  return {
+    en: normalized || fallbackValue,
+    ar: fallbackValue || normalized,
+  };
+}
+
+function mergeLocalizedValue(primary, secondary = null) {
+  if (!primary && !secondary) {
+    return null;
+  }
+
+  const primaryEn = trimString(primary?.en);
+  const primaryAr = trimString(primary?.ar);
+  const secondaryEn = trimString(secondary?.en);
+  const secondaryAr = trimString(secondary?.ar);
+  const fallbackEn = primaryEn || secondaryEn || secondaryAr;
+  const fallbackAr = primaryAr || secondaryAr || fallbackEn;
+
+  if (!fallbackEn && !fallbackAr) {
+    return null;
+  }
+
+  return {
+    en: fallbackEn,
+    ar: fallbackAr,
+  };
+}
+
+function inferCategory(text) {
+  const normalized = trimString(text).toLowerCase();
+
+  const categoryMatchers = [
+    { pattern: /(milk|laban|labneh|yogurt|yoghurt|cheese|بيض|حليب|لبن|لبنة|زبادي|جبنة)/i, value: { en: 'Dairy', ar: 'ألبان' } },
+    { pattern: /(bread|toast|bun|croissant|خبز|توست|مخبوز)/i, value: { en: 'Bakery', ar: 'مخبوزات' } },
+    { pattern: /(cola|pepsi|soda|carbonated|sparkling|soft drink|بيبسي|غازي|كولا)/i, value: { en: 'Beverages', ar: 'مشروبات' } },
+    { pattern: /(energy drink|red bull|monster|power horse|طاقة|ريد بول)/i, value: { en: 'Energy Drinks', ar: 'مشروبات طاقة' } },
+    { pattern: /(rice|oil|noodles|pasta|tuna|tea|coffee|sugar|flour|أرز|زيت|شعيرية|مكرونة|تونة|شاي|قهوة|سكر|طحين)/i, value: { en: 'Pantry', ar: 'مؤن غذائية' } },
+    { pattern: /(chips|chocolate|biscuits|cookies|dates|snack|شيبس|شوكولاتة|بسكويت|تمر)/i, value: { en: 'Snacks', ar: 'وجبات خفيفة' } },
+    { pattern: /(detergent|tissue|soap|shampoo|sanitizer|cleaner|منظف|مناديل|صابون|شامبو|مطهر)/i, value: { en: 'Household', ar: 'منظفات وعناية' } },
+    { pattern: /(banana|tomato|potato|apple|orange|onion|produce|موز|طماطم|بطاطس|تفاح|برتقال|بصل)/i, value: { en: 'Produce', ar: 'خضار وفواكه' } },
+    { pattern: /(chicken|beef|lamb|meat|fish|poultry|دجاج|لحم|سمك|لحوم)/i, value: { en: 'Protein', ar: 'لحوم ودواجن' } },
+    { pattern: /(water|مياه|ماء)/i, value: { en: 'Water', ar: 'مياه' } },
+  ];
+
+  const match = categoryMatchers.find((entry) => entry.pattern.test(normalized));
+  return match?.value || { en: 'General Merchandise', ar: 'سلع عامة' };
+}
+
+function inferUnitFromText(text) {
+  const normalized = trimString(text).toLowerCase();
+
+  if (/(\d+(?:\.\d+)?)\s*(kg|كيلو|كجم)/i.test(normalized)) {
+    return PRODUCT_UNITS.KG;
+  }
+
+  if (/(\d+(?:\.\d+)?)\s*(g|gm|gram|جرام|جم)/i.test(normalized)) {
+    return PRODUCT_UNITS.GRAM;
+  }
+
+  if (/(\d+(?:\.\d+)?)\s*(l|ltr|liter|litre|ml|مل|لتر)/i.test(normalized)) {
+    return PRODUCT_UNITS.LITER;
+  }
+
+  if (/(pack|box|bags|pcs|pieces|عبوة|علبة|حبة|كيس)/i.test(normalized)) {
+    return PRODUCT_UNITS.BOX;
+  }
+
+  return PRODUCT_UNITS.EACH;
+}
+
+function inferRequiresExpiryTracking(text, category) {
+  const normalized = trimString(text).toLowerCase();
+  const categoryName = trimString(category?.en).toLowerCase();
+  return /(milk|laban|labneh|yogurt|yoghurt|cheese|bread|bakery|juice|chicken|meat|produce|egg|حليب|لبن|لبنة|زبادي|جبنة|خبز|عصير|دجاج|لحم|بيض|خضار|فاكهة)/i.test(normalized) || ['dairy', 'bakery', 'produce', 'protein'].includes(categoryName);
+}
+
+function inferTaxProfile(text) {
+  const normalized = trimString(text).toLowerCase();
+
+  if (/(energy drink|red bull|monster|power horse|طاقة|ريد بول)/i.test(normalized)) {
     return {
-      en: text,
-      ar: text,
+      vatRate: 15,
+      exciseTaxRate: 100,
+      taxCategory: 'ENERGY_DRINK',
+      requiresTaxReview: false,
     };
   }
 
-  const english = String(value?.en || fallback || '').trim();
-  const arabic = String(value?.ar || english || fallback || '').trim();
-
-  return {
-    en: english,
-    ar: arabic,
-  };
-}
-
-function normalizeDate(value) {
-  if (!value) {
-    return '';
-  }
-
-  const parsed = new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return '';
-  }
-
-  return parsed.toISOString().slice(0, 10);
-}
-
-function buildPlaceholderImage(label, accent = '#0f766e') {
-  const displayLabel = String(label || 'Saudi Product')
-    .trim()
-    .split(/\s+/)
-    .slice(0, 3)
-    .join(' ');
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320">
-      <defs>
-        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="${accent}"/>
-          <stop offset="100%" stop-color="#0f172a"/>
-        </linearGradient>
-      </defs>
-      <rect width="320" height="320" rx="42" fill="url(#g)"/>
-      <circle cx="252" cy="68" r="38" fill="rgba(255,255,255,0.16)"/>
-      <rect x="34" y="42" width="112" height="112" rx="28" fill="rgba(255,255,255,0.18)"/>
-      <text x="34" y="218" fill="#ffffff" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="700">${displayLabel}</text>
-      <text x="34" y="260" fill="#e2e8f0" font-size="18" font-family="Arial, Helvetica, sans-serif">Free Catalog</text>
-    </svg>
-  `;
-
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-}
-
-function escapeRegex(value) {
-  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function applyBusinessTypeFilter(products, businessType) {
-  if (businessType === BUSINESS_TYPES.BAKALA) {
-    return products.filter((product) => !product.isWeighedItem);
-  }
-
-  return products;
-}
-
-function applySearchFilter(products, search) {
-  const normalizedSearch = String(search || '').trim().toLowerCase();
-
-  if (!normalizedSearch) {
-    return products;
-  }
-
-  return products.filter((product) => {
-    return [
-      product.brand?.en,
-      product.brand?.ar,
-      product.name?.en,
-      product.name?.ar,
-      product.category?.en,
-      product.category?.ar,
-      product.sku,
-      product.barcode,
-    ]
-      .join(' ')
-      .toLowerCase()
-      .includes(normalizedSearch);
-  });
-}
-
-function sortProducts(products) {
-  return [...products].sort((left, right) => {
-    return (left.name?.en || '').localeCompare(right.name?.en || '', 'en');
-  });
-}
-
-function mapDemoProduct(product) {
-  return {
-    ...product,
-    source: 'demo',
-  };
-}
-
-function mapProductDocument(productDocument) {
-  const id = productDocument.id || productDocument._id?.toString() || '';
-  const brand = normalizeLocalizedText(productDocument.brand, '');
-  const name = normalizeLocalizedText(productDocument.name, productDocument.sku || 'Saudi Product');
-  const category = normalizeLocalizedText(productDocument.categoryId?.name || productDocument.category, 'General');
-  const imageUrl = String(productDocument.imageUrl || '').trim() || buildPlaceholderImage(`${brand.en} ${name.en}`.trim() || name.en);
-
-  return {
-    id,
-    tenantId: productDocument.tenantId?.toString?.() || String(productDocument.tenantId || ''),
-    categoryId: productDocument.categoryId?._id?.toString?.() || String(productDocument.categoryId || ''),
-    supplierId: productDocument.supplierId?.toString?.() || String(productDocument.supplierId || ''),
-    businessTypes: productDocument.isWeighedItem ? [BUSINESS_TYPES.GROCERY_STORE] : [BUSINESS_TYPES.BAKALA, BUSINESS_TYPES.GROCERY_STORE],
-    brand,
-    name,
-    category,
-    sku: String(productDocument.sku || '').trim(),
-    barcode: String(productDocument.barcode || '').trim(),
-    costPrice: Number(productDocument.costPrice || 0),
-    sellingPrice: Number(productDocument.sellingPrice || 0),
-    vatRate: Number(productDocument.vatRate || 15),
-    unit: productDocument.unit || (productDocument.isWeighedItem ? PRODUCT_UNITS.KG : PRODUCT_UNITS.EACH),
-    isWeighedItem: Boolean(productDocument.isWeighedItem),
-    scaleBarcodePrefix: String(productDocument.scaleBarcodePrefix || '').trim(),
-    scaleItemCode: String(productDocument.scaleItemCode || '').trim(),
-    packedDate: normalizeDate(productDocument.packedDate),
-    expiryDate: normalizeDate(productDocument.expiryDate),
-    requiresExpiryTracking: Boolean(productDocument.requiresExpiryTracking),
-    stockQuantity: Number(productDocument.stockQuantity || 0),
-    reorderLevel: Number(productDocument.reorderLevel || 0),
-    isActive: productDocument.isActive !== false,
-    imageUrl,
-    source: 'database',
-  };
-}
-
-function buildDemoCatalog({ businessType, search }) {
-  const products = demoProducts.map(mapDemoProduct);
-  return sortProducts(applySearchFilter(applyBusinessTypeFilter(products, businessType), search));
-}
-
-function sanitizeBarcode(barcode) {
-  return String(barcode || '').replace(/\s+/g, '').trim();
-}
-
-export async function listCatalogProducts({ databaseReady, allowDemoFallback = true, tenantId, businessType, search = '' }) {
-  if (!tenantId || !databaseReady) {
-    if (!allowDemoFallback) {
-      return [];
-    }
-
-    return buildDemoCatalog({ businessType, search });
-  }
-
-  const query = {
-    tenantId,
-    isActive: true,
-  };
-
-  if (businessType === BUSINESS_TYPES.BAKALA) {
-    query.isWeighedItem = false;
-  }
-
-  if (String(search || '').trim()) {
-    const pattern = new RegExp(escapeRegex(search.trim()), 'i');
-    query.$or = [
-      { sku: pattern },
-      { barcode: pattern },
-      { 'name.en': pattern },
-      { 'name.ar': pattern },
-      { 'brand.en': pattern },
-      { 'brand.ar': pattern },
-    ];
-  }
-
-  const products = await Product.find(query).populate('categoryId').sort({ 'name.en': 1, createdAt: 1 }).lean();
-  return sortProducts(products.map(mapProductDocument));
-}
-
-export async function resolveCatalogBarcode({ barcode, databaseReady, allowDemoFallback = true, tenantId, businessType }) {
-  const normalizedBarcode = sanitizeBarcode(barcode);
-
-  if (!normalizedBarcode) {
-    return null;
-  }
-
-  const products = await listCatalogProducts({ databaseReady, allowDemoFallback, tenantId, businessType });
-  const directMatch = products.find((product) => product.barcode === normalizedBarcode);
-
-  if (directMatch) {
+  if (/(cola|pepsi|coca|soft drink|carbonated|soda|بيبسي|كوكا|غازي|كولا)/i.test(normalized)) {
     return {
-      product: directMatch,
-      quantity: 1,
-      unitPrice: directMatch.sellingPrice,
-      scalePayload: null,
+      vatRate: 15,
+      exciseTaxRate: 50,
+      taxCategory: 'SOFT_DRINK',
+      requiresTaxReview: false,
     };
   }
 
-  const resolved = resolveScaleBarcodeProduct(normalizedBarcode, products);
-
-  if (!resolved?.product) {
-    return null;
+  if (/(juice|nectar|mango drink|orange drink|عصير|شراب)/i.test(normalized)) {
+    return {
+      vatRate: 15,
+      exciseTaxRate: 50,
+      taxCategory: 'SWEETENED_BEVERAGE',
+      requiresTaxReview: true,
+    };
   }
 
   return {
-    product: resolved.product,
-    quantity: resolved.quantity,
-    unitPrice: resolved.unitPrice,
-    scalePayload: resolved.parsed,
+    vatRate: 15,
+    exciseTaxRate: 0,
+    taxCategory: 'STANDARD',
+    requiresTaxReview: false,
   };
 }
 
-export async function fetchOpenFoodFactsProduct(barcode) {
-  const normalizedBarcode = sanitizeBarcode(barcode).replace(/\D/g, '');
+function buildRetailSearchUrls(barcode) {
+  return {
+    carrefourKsa: `https://www.carrefourksa.com/mafsau/en/search?text=${barcode}`,
+    othaim: `https://www.othaimmarkets.com/catalogsearch/result/?q=${barcode}`,
+    luluSaudi: `https://www.luluhypermarket.com/en-sa/search/?text=${barcode}`,
+  };
+}
 
-  if (!normalizedBarcode) {
+function buildLookupNotes(product) {
+  const notes = [
+    'Store product master locally and treat external lookups as enrichment only.',
+    'Use FEFO for expiry-tracked products and batch receiving through GRN lines.',
+    'Keep selling price and cost price tenant-specific even when barcode metadata is shared.',
+  ];
+
+  if (product.requiresTaxReview) {
+    notes.push('Review excise classification manually for sweetened beverages against the current ZATCA rules.');
+  }
+
+  if (!product.referencePrice) {
+    notes.push('No trusted free Saudi price feed was found for this barcode, so price should be confirmed manually or through a licensed retailer feed.');
+  }
+
+  return notes;
+}
+
+async function fetchJson(url) {
+  if (typeof fetch !== 'function') {
     return null;
   }
 
-  const response = await fetch(
-    `https://world.openfoodfacts.org/api/v2/product/${normalizedBarcode}.json?fields=code,product_name,product_name_ar,brands,image_front_url,image_url,categories,quantity,packaging,origins,countries`,
-    {
-      headers: {
-        'User-Agent': 'Buysial ERP Free Catalog/0.1',
-      },
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4500);
+
+  try {
+    const response = await fetch(url, {
+      headers: OPEN_FOOD_FACTS_HEADERS,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return null;
     }
-  );
 
-  if (!response.ok) {
-    throw new Error(`Open Food Facts lookup failed with status ${response.status}.`);
+    return response.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
+}
 
-  const payload = await response.json();
+async function lookupOpenFoodFactsProduct(barcode) {
+  const fields = encodeURIComponent(OPEN_FOOD_FACTS_FIELDS.join(','));
+  const url = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${fields}`;
+  const payload = await fetchJson(url);
   const product = payload?.product;
 
-  if (payload?.status !== 1 || !product) {
+  if (!product) {
     return null;
   }
 
-  const primaryBrand = String(product.brands || '')
-    .split(',')
-    .map((value) => value.trim())
-    .find(Boolean) || '';
-  const primaryCategory = String(product.categories || '')
-    .split(',')
-    .map((value) => value.trim())
-    .find(Boolean) || 'General';
-  const resolvedName = String(product.product_name || primaryBrand || normalizedBarcode).trim();
+  const combinedText = [
+    product.product_name,
+    product.product_name_ar,
+    product.brands,
+    product.categories,
+    product.quantity,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const category = inferCategory(`${product.categories || ''} ${product.product_name || ''}`);
+  const taxProfile = inferTaxProfile(combinedText);
 
   return {
-    barcode: normalizedBarcode,
-    name: {
-      en: resolvedName,
-      ar: String(product.product_name_ar || resolvedName).trim(),
-    },
-    brand: {
-      en: primaryBrand,
-      ar: primaryBrand,
-    },
-    category: {
-      en: primaryCategory,
-      ar: primaryCategory,
-    },
-    imageUrl: String(product.image_front_url || product.image_url || '').trim(),
-    quantity: String(product.quantity || '').trim(),
-    packaging: String(product.packaging || '').trim(),
-    origin: String(product.origins || product.countries || '').trim(),
-    source: 'open_food_facts',
-    sourceUrl: `https://world.openfoodfacts.org/product/${normalizedBarcode}`,
+    barcode,
+    brand: createLocalizedValue(product.brands),
+    name: createLocalizedValue(product.product_name, product.product_name_ar),
+    category,
+    unit: inferUnitFromText(`${product.quantity || ''} ${product.product_name || ''}`),
+    vatRate: taxProfile.vatRate,
+    exciseTaxRate: taxProfile.exciseTaxRate,
+    taxCategory: taxProfile.taxCategory,
+    requiresTaxReview: taxProfile.requiresTaxReview,
+    requiresExpiryTracking: inferRequiresExpiryTracking(combinedText, category),
+    imageUrl: trimString(product.image_front_url || product.image_url),
+    countryOfOrigin: trimString(product.countries),
+    storageTemperature: '',
+    referencePrice: null,
+    catalogSource: 'open_food_facts',
   };
 }
 
-export async function createCatalogProduct(payload) {
-  const normalizedPayload = {
-    tenantId: payload.tenantId,
-    categoryId: payload.categoryId,
-    supplierId: payload.supplierId || null,
-    name: normalizeLocalizedText(payload.name, payload.sku || 'Saudi Product'),
-    brand: normalizeLocalizedText(payload.brand, ''),
-    sku: String(payload.sku || '').trim(),
-    barcode: sanitizeBarcode(payload.barcode),
-    costPrice: Number(payload.costPrice || 0),
-    sellingPrice: Number(payload.sellingPrice || 0),
-    vatRate: Number(payload.vatRate ?? 15),
-    unit: payload.unit || PRODUCT_UNITS.EACH,
-    isWeighedItem: Boolean(payload.isWeighedItem),
-    scaleBarcodePrefix: String(payload.scaleBarcodePrefix || '20').trim(),
-    scaleItemCode: String(payload.scaleItemCode || '').trim(),
-    packedDate: payload.packedDate || null,
-    expiryDate: payload.expiryDate || null,
-    requiresExpiryTracking: payload.requiresExpiryTracking ?? true,
-    stockQuantity: Number(payload.stockQuantity || 0),
-    reorderLevel: Number(payload.reorderLevel || 0),
-    imageUrl: String(payload.imageUrl || '').trim(),
-    isActive: payload.isActive ?? true,
-  };
+function mergeCatalogProducts(seedProduct, openFoodFactsProduct, barcode) {
+  const mergedBase = seedProduct || openFoodFactsProduct;
 
-  const category = await Category.findById(normalizedPayload.categoryId).lean();
-
-  if (!category) {
-    throw new Error('Category not found for product creation.');
+  if (!mergedBase) {
+    return null;
   }
 
-  const product = await Product.create({
-    ...normalizedPayload,
-    barcode: normalizedPayload.barcode || undefined,
-  });
-  const createdProduct = await Product.findById(product._id).populate('categoryId').lean();
+  const combinedText = [
+    seedProduct?.name?.en,
+    seedProduct?.name?.ar,
+    seedProduct?.brand?.en,
+    openFoodFactsProduct?.name?.en,
+    openFoodFactsProduct?.name?.ar,
+    openFoodFactsProduct?.brand?.en,
+    openFoodFactsProduct?.category?.en,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const category = seedProduct?.category || openFoodFactsProduct?.category || inferCategory(combinedText);
+  const taxProfile = seedProduct
+    ? {
+        vatRate: Number(seedProduct.vatRate || 15),
+        exciseTaxRate: Number(seedProduct.exciseTaxRate || 0),
+        taxCategory: trimString(seedProduct.taxCategory) || 'STANDARD',
+        requiresTaxReview: false,
+      }
+    : inferTaxProfile(combinedText);
 
-  return mapProductDocument(createdProduct);
+  return {
+    barcode,
+    brand: mergeLocalizedValue(seedProduct?.brand, openFoodFactsProduct?.brand),
+    name: mergeLocalizedValue(seedProduct?.name, openFoodFactsProduct?.name),
+    category,
+    unit: seedProduct?.unit || openFoodFactsProduct?.unit || inferUnitFromText(combinedText),
+    vatRate: taxProfile.vatRate,
+    exciseTaxRate: taxProfile.exciseTaxRate,
+    taxCategory: taxProfile.taxCategory,
+    requiresTaxReview: taxProfile.requiresTaxReview || Boolean(openFoodFactsProduct?.requiresTaxReview),
+    requiresExpiryTracking:
+      typeof seedProduct?.requiresExpiryTracking === 'boolean'
+        ? seedProduct.requiresExpiryTracking
+        : typeof openFoodFactsProduct?.requiresExpiryTracking === 'boolean'
+          ? openFoodFactsProduct.requiresExpiryTracking
+          : inferRequiresExpiryTracking(combinedText, category),
+    imageUrl: trimString(seedProduct?.imageUrl || openFoodFactsProduct?.imageUrl),
+    countryOfOrigin: trimString(seedProduct?.countryOfOrigin || openFoodFactsProduct?.countryOfOrigin),
+    storageTemperature: trimString(seedProduct?.storageTemperature || openFoodFactsProduct?.storageTemperature),
+    referencePrice: Number(seedProduct?.referencePrice || 0) || null,
+    catalogSource: [seedProduct?.catalogSource, openFoodFactsProduct?.catalogSource].filter(Boolean).join('+') || 'manual',
+  };
+}
+
+export async function lookupSaudiBarcodeCatalog(rawBarcode) {
+  const barcode = normalizeBarcode(rawBarcode);
+
+  if (!/^\d{8,14}$/.test(barcode)) {
+    throw new Error('Barcode must be 8 to 14 numeric digits.');
+  }
+
+  const seedProduct = SAUDI_SEED_BY_BARCODE.get(barcode) || null;
+  const openFoodFactsProduct = await lookupOpenFoodFactsProduct(barcode);
+  const mergedProduct = mergeCatalogProducts(seedProduct, openFoodFactsProduct, barcode);
+  const fallbackCategory = { en: 'General Merchandise', ar: 'سلع عامة' };
+  const fallbackProduct = mergedProduct || {
+    barcode,
+    brand: null,
+    name: null,
+    category: fallbackCategory,
+    unit: PRODUCT_UNITS.EACH,
+    vatRate: 15,
+    exciseTaxRate: 0,
+    taxCategory: 'STANDARD',
+    requiresTaxReview: false,
+    requiresExpiryTracking: false,
+    imageUrl: '',
+    countryOfOrigin: '',
+    storageTemperature: '',
+    referencePrice: null,
+    catalogSource: 'unresolved',
+  };
+
+  return {
+    barcode,
+    found: Boolean(mergedProduct),
+    availableSources: [seedProduct ? 'saudi_seed' : null, openFoodFactsProduct ? 'open_food_facts' : null].filter(Boolean),
+    draft: {
+      ...fallbackProduct,
+      inventoryMethod: fallbackProduct.requiresExpiryTracking ? 'FEFO' : 'FIFO',
+    },
+    searchUrls: buildRetailSearchUrls(barcode),
+    notes: buildLookupNotes(fallbackProduct),
+  };
 }

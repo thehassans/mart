@@ -15,6 +15,9 @@ export default function BarcodePrinterModal({ isOpen, onClose, product }) {
 
   const productName = product.name[language] || product.name.en;
   const labelType = product.isWeighedItem ? t('printer.weightedSticker') : t('printer.shelfLabel');
+  const categoryName = product.category?.[language] || product.category?.en || '-';
+  const packedDate = product.packedDate ? String(product.packedDate).slice(0, 10) : '-';
+  const expiryDate = product.expiryDate ? String(product.expiryDate).slice(0, 10) : '-';
 
   return (
     <div className={isDark ? 'fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-6 backdrop-blur-xl' : 'fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-6 backdrop-blur-xl'}>
@@ -47,7 +50,7 @@ export default function BarcodePrinterModal({ isOpen, onClose, product }) {
           <div className="mt-8 grid gap-5 sm:grid-cols-2">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{t('inventory.category')}</p>
-              <p className="mt-2 text-sm font-medium text-slate-900">{product.category[language] || product.category.en}</p>
+              <p className="mt-2 text-sm font-medium text-slate-900">{categoryName}</p>
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{product.isWeighedItem ? t('printer.pricePerKg') : t('inventory.price')}</p>
@@ -55,11 +58,11 @@ export default function BarcodePrinterModal({ isOpen, onClose, product }) {
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{t('printer.packedDate')}</p>
-              <p className="mt-2 text-sm font-medium text-slate-900">{product.packedDate}</p>
+              <p className="mt-2 text-sm font-medium text-slate-900">{packedDate}</p>
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{t('inventory.expiryDate')}</p>
-              <p className="mt-2 text-sm font-medium text-slate-900">{product.expiryDate}</p>
+              <p className="mt-2 text-sm font-medium text-slate-900">{expiryDate}</p>
             </div>
           </div>
 

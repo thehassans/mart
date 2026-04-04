@@ -1,246 +1,73 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useAdminTheme } from '../utils/adminTheme.js';
+import { apiRequest } from '../utils/api.js';
+import InventoryCatalogImportPanel from '../components/inventory/InventoryCatalogImportPanel.jsx';
 import InventoryDataTable from '../components/inventory/InventoryDataTable.jsx';
 import BarcodePrinterModal from '../components/inventory/BarcodePrinterModal.jsx';
-import Button from '../components/ui/Button.jsx';
 import BusinessTypeSelector from '../components/ui/BusinessTypeSelector.jsx';
-import Field from '../components/ui/Field.jsx';
-import GlassPanel from '../components/ui/GlassPanel.jsx';
-import StatusBadge from '../components/ui/StatusBadge.jsx';
+import Button from '../components/ui/Button.jsx';
 import WorkspaceHero from '../components/ui/WorkspaceHero.jsx';
-import { clearStoredAdminSession } from '../utils/adminSession.js';
-import { resolveApiBaseUrl } from '../utils/api.js';
-import { useCatalogProducts } from '../utils/catalog.js';
 
 export default function AdminInventoryPage() {
   const { t } = useTranslation();
+  const { isDark } = useAdminTheme();
   const { businessType, setBusinessType, session } = useOutletContext();
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [reloadKey, setReloadKey] = useState(0);
-  const [sources, setSources] = useState([]);
-  const [sourceKey, setSourceKey] = useState('tamimi');
-  const [maxProducts, setMaxProducts] = useState('2000');
-  const [detailEnrichmentLimit, setDetailEnrichmentLimit] = useState('60');
-  const [categoryUrls, setCategoryUrls] = useState('');
-  const [discoveredCategoryCount, setDiscoveredCategoryCount] = useState(0);
-  const [previewItems, setPreviewItems] = useState([]);
-  const [previewMeta, setPreviewMeta] = useState(null);
-  const [statusMessage, setStatusMessage] = useState('');
-  const [isDiscoveringCategories, setIsDiscoveringCategories] = useState(false);
-  const [isPreviewing, setIsPreviewing] = useState(false);
-  const { products, source, errorMessage } = useCatalogProducts({ businessType, session, reloadKey, allowDemoFallback: false });
-  const token = String(session?.token || '').trim();
-  const tenantId = String(session?.user?.tenantId || '').trim();
+  const [products, setProducts] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const loadProducts = useCallback(async () => {
+    if (!session?.token || !session?.user?.tenantId) {
+      setProducts([]);
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMessage('');
+
+    try {
+      const payload = await apiRequest('/api/products', {
+        token: session.token,
+        query: {
+          tenantId: session.user.tenantId,
+          limit: 200,
+        },
+      });
+
+      setProducts(payload.products || []);
+    } catch (error) {
+      setProducts([]);
+      setErrorMessage(error.message || t('inventory.loadFailed'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [session?.token, session?.user?.tenantId, t]);
 
   useEffect(() => {
-    let isCancelled = false;
-
-    async function loadSources() {
-      if (!token) {
-        return;
-      }
-
-      try {
-        const response = await fetch(`${resolveApiBaseUrl()}/api/products/import-sources`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        const payload = await response.json();
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            clearStoredAdminSession();
-          }
-
-          throw new Error(payload.message || 'Unable to load market import sources.');
-        }
-
-        if (isCancelled) {
-          return;
-        }
-
-        setSources(Array.isArray(payload.sources) ? payload.sources : []);
-      } catch (error) {
-        if (!isCancelled) {
-          setStatusMessage(error.message || 'Unable to load market import sources.');
-        }
-      }
-    }
-
-    loadSources();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [token]);
-
-  async function handlePreviewImport() {
-    if (!token || !tenantId) {
-      return;
-    }
-
-    setIsPreviewing(true);
-    setStatusMessage('');
-
-    try {
-      const response = await fetch(`${resolveApiBaseUrl()}/api/products/import/preview`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          tenantId,
-          sourceKey,
-          maxProducts: Number(maxProducts || 0),
-          detailEnrichmentLimit: Number(detailEnrichmentLimit || 0),
-          categoryUrls: categoryUrls
-            .split(/\r?\n/)
-            .map((value) => value.trim())
-            .filter(Boolean),
-          enrichProducts: true,
-          persistToCatalog: true,
-          allowUpdate: true,
-          defaultVatRate: 15,
-        }),
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          clearStoredAdminSession();
-        }
-
-        throw new Error(payload.message || 'Unable to preview market import.');
-      }
-
-      setPreviewMeta(payload.preview || null);
-      setPreviewItems(Array.isArray(payload.preview?.items) ? payload.preview.items : []);
-      setReloadKey((currentValue) => currentValue + 1);
-      setStatusMessage(`Import complete: created ${payload.summary?.created || 0}, updated ${payload.summary?.updated || 0}, skipped ${payload.summary?.skipped || 0}. Products discovered: ${payload.preview?.totalDiscovered || 0}. Categories scanned: ${payload.preview?.categoriesScanned || 0}. Failed categories: ${payload.preview?.failedCategoryCount || 0}.`);
-    } catch (error) {
-      setStatusMessage(error.message || 'Unable to preview market import.');
-    } finally {
-      setIsPreviewing(false);
-    }
-  }
-
-  async function handleDiscoverCategories() {
-    if (!token) {
-      return;
-    }
-
-    setIsDiscoveringCategories(true);
-    setStatusMessage('');
-
-    try {
-      const params = new URLSearchParams({ sourceKey });
-      const response = await fetch(`${resolveApiBaseUrl()}/api/products/import-categories?${params.toString()}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          clearStoredAdminSession();
-        }
-
-        throw new Error(payload.message || 'Unable to discover market categories.');
-      }
-
-      const resolvedUrls = Array.isArray(payload.categoryUrls) ? payload.categoryUrls : [];
-      setDiscoveredCategoryCount(resolvedUrls.length);
-      setCategoryUrls(resolvedUrls.join('\n'));
-      setStatusMessage(`Loaded ${resolvedUrls.length} category URLs for ${payload.sourceKey}.`);
-    } catch (error) {
-      setStatusMessage(error.message || 'Unable to discover market categories.');
-    } finally {
-      setIsDiscoveringCategories(false);
-    }
-  }
+    loadProducts();
+  }, [loadProducts]);
 
   return (
     <div className="space-y-8">
-      <WorkspaceHero eyebrow={t('inventory.eyebrow')} subtitle={t('inventory.subtitle')} title={t('workspaceNav.inventory')} />
+      <WorkspaceHero
+        action={
+          <Button disabled={isLoading} onClick={loadProducts} variant="secondary">
+            <RefreshCw className={`me-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`.trim()} />
+            {t('inventory.refresh')}
+          </Button>
+        }
+        eyebrow={t('inventory.eyebrow')}
+        subtitle={t('inventory.subtitle')}
+        title={t('workspaceNav.inventory')}
+      />
       <BusinessTypeSelector businessType={businessType} onChange={setBusinessType} />
-      <GlassPanel className="p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-indigo-600 dark:text-indigo-200">Saudi Market Import</p>
-            <h3 className="mt-2 text-xl font-semibold">Bulk import retailer products directly into your inventory</h3>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">Load market categories, then auto-add discovered products straight into this tenant catalog. Leaving category URLs empty now uses the wider source sitemap when supported.</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <StatusBadge tone={source === 'database' ? 'success' : source === 'unavailable' ? 'danger' : 'warning'}>{source === 'database' ? 'Live DB Catalog' : source === 'unavailable' ? 'Live Catalog Unavailable' : 'API Fallback'}</StatusBadge>
-            {previewMeta ? <StatusBadge tone="neutral">Preview: {previewMeta.totalDiscovered}</StatusBadge> : null}
-            {previewMeta?.categoriesScanned ? <StatusBadge tone="neutral">Categories: {previewMeta.categoriesScanned}</StatusBadge> : null}
-            {previewMeta?.enrichedCount ? <StatusBadge tone="neutral">Enriched: {previewMeta.enrichedCount}</StatusBadge> : null}
-            {previewMeta?.failedCategoryCount ? <StatusBadge tone="warning">Failed Categories: {previewMeta.failedCategoryCount}</StatusBadge> : null}
-          </div>
-        </div>
-
-        {errorMessage ? <p className="mt-4 text-sm text-rose-600 dark:text-rose-300">{errorMessage}</p> : null}
-        {!token ? <p className="mt-2 text-sm text-amber-600 dark:text-amber-300">Admin session is missing or expired. Sign in again before previewing or syncing imports.</p> : null}
-
-        <div className="mt-6 grid gap-4 lg:grid-cols-4">
-          <Field as="select" label="Market source" name="sourceKey" onChange={(event) => setSourceKey(event.target.value)} value={sourceKey}>
-            {(sources.length > 0 ? sources : [{ key: 'tamimi', label: 'Tamimi Markets' }]).map((marketSource) => (
-              <option key={marketSource.key} value={marketSource.key}>
-                {marketSource.label}
-              </option>
-            ))}
-          </Field>
-          <Field label="Max products" name="maxProducts" onChange={(event) => setMaxProducts(event.target.value)} type="number" value={maxProducts} />
-          <Field label="Detail enrich limit" name="detailEnrichmentLimit" onChange={(event) => setDetailEnrichmentLimit(event.target.value)} type="number" value={detailEnrichmentLimit} />
-          <Field label="Tenant scope" name="tenantScope" readOnly value={tenantId || 'No tenant'} />
-        </div>
-
-        <div className="mt-4">
-          <Field as="textarea" className="min-h-32" label="Category URLs (optional, one per line)" name="categoryUrls" onChange={(event) => setCategoryUrls(event.target.value)} placeholder="Leave empty to use the source default category set." value={categoryUrls} />
-        </div>
-
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Button onClick={handleDiscoverCategories} type="button" variant="ghost">
-            {isDiscoveringCategories ? 'Loading Categories...' : 'Load Source Categories'}
-          </Button>
-          <Button onClick={handlePreviewImport} type="button" variant="secondary">
-            {isPreviewing ? 'Importing Products...' : 'Auto Add To DB'}
-          </Button>
-        </div>
-
-        {statusMessage ? <p className="mt-4 text-sm text-slate-500 dark:text-slate-300">{statusMessage}</p> : null}
-        {discoveredCategoryCount > 0 ? <p className="mt-2 text-xs text-slate-400 dark:text-slate-400">Discovered category URLs loaded: {discoveredCategoryCount}</p> : null}
-
-        {previewItems.length > 0 ? (
-          <div className="mt-6 overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 dark:divide-white/10">
-              <thead>
-                <tr>
-                  <th className="px-4 py-3 text-start text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Product</th>
-                  <th className="px-4 py-3 text-start text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Brand</th>
-                  <th className="px-4 py-3 text-start text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Category</th>
-                  <th className="px-4 py-3 text-start text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Price</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                {previewItems.slice(0, 12).map((item) => (
-                  <tr key={item.slug}>
-                    <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200">{item.name?.en}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200">{item.brand?.en || 'Market Source'}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200">{item.category?.en}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200">SAR {Number(item.sellingPrice || 0).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-      </GlassPanel>
-      <InventoryDataTable businessType={businessType} onPrintLabel={setSelectedProduct} products={products} />
+      {errorMessage ? <div className={isDark ? 'rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200' : 'rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700'}>{errorMessage}</div> : null}
+      <InventoryCatalogImportPanel onProductCreated={loadProducts} session={session} />
+      <InventoryDataTable businessType={businessType} isLoading={isLoading} onPrintLabel={setSelectedProduct} products={products} />
       <BarcodePrinterModal isOpen={Boolean(selectedProduct)} onClose={() => setSelectedProduct(null)} product={selectedProduct} />
     </div>
   );

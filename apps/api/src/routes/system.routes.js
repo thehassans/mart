@@ -8,10 +8,6 @@ router.get('/health', (_req, res) => {
     status: 'ok',
     service: 'buysial-erp-api',
     databaseReady: _req.app.locals.databaseReady,
-    databaseErrorMessage: _req.app.locals.databaseErrorMessage,
-    databaseEnvKey: _req.app.locals.databaseEnvKey,
-    databaseLastUpdatedAt: _req.app.locals.databaseLastUpdatedAt,
-    allowDemoFallback: _req.app.locals.allowDemoFallback,
     timestamp: new Date().toISOString(),
   });
 });

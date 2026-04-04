@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { BUSINESS_TYPES } from '@vitalblaze/shared';
 import { useTranslation } from 'react-i18next';
 import InventoryDataTable from '../components/inventory/InventoryDataTable.jsx';
@@ -7,13 +7,17 @@ import SiteHeader from '../components/layout/SiteHeader.jsx';
 import MarketingFooter from '../components/marketing/MarketingFooter.jsx';
 import BusinessTypeSelector from '../components/ui/BusinessTypeSelector.jsx';
 import WorkspaceHero from '../components/ui/WorkspaceHero.jsx';
-import { useCatalogProducts } from '../utils/catalog.js';
+import { demoProducts } from '../data/demo.js';
 
 export default function InventoryPage() {
   const { t } = useTranslation();
   const [businessType, setBusinessType] = useState(BUSINESS_TYPES.GROCERY_STORE);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const { products } = useCatalogProducts({ businessType });
+
+  const products = useMemo(
+    () => demoProducts.filter((product) => product.businessTypes.includes(businessType)),
+    [businessType]
+  );
 
   return (
     <div>
