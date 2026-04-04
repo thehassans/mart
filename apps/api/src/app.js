@@ -8,10 +8,11 @@ import { createProductsRouter } from './routes/products.routes.js';
 import { systemRouter } from './routes/system.routes.js';
 import { createTenantRouter } from './routes/tenant.routes.js';
 
-export function createApp({ clientOrigin, jwtSecret, databaseReady = false, databaseErrorMessage = '', allowDemoFallback = true, staticAssetsPath = null }) {
+export function createApp({ clientOrigin, jwtSecret, databaseReady = false, databaseErrorMessage = '', databaseEnvKey = '', allowDemoFallback = true, staticAssetsPath = null }) {
   const app = express();
   app.locals.databaseReady = databaseReady;
   app.locals.databaseErrorMessage = String(databaseErrorMessage || '');
+  app.locals.databaseEnvKey = String(databaseEnvKey || '');
   app.locals.databaseLastUpdatedAt = new Date().toISOString();
   app.locals.allowDemoFallback = allowDemoFallback;
 
@@ -29,6 +30,7 @@ export function createApp({ clientOrigin, jwtSecret, databaseReady = false, data
       message: 'Buysial ERP API is running.',
       databaseReady: app.locals.databaseReady,
       databaseErrorMessage: app.locals.databaseErrorMessage,
+      databaseEnvKey: app.locals.databaseEnvKey,
       databaseLastUpdatedAt: app.locals.databaseLastUpdatedAt,
       allowDemoFallback: app.locals.allowDemoFallback,
     });

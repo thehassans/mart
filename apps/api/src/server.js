@@ -12,11 +12,48 @@ const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 5000);
 const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 const jwtSecret = process.env.JWT_SECRET || 'development-only-jwt-secret';
-const mongoUri = process.env.MONGODB_URI || process.env.MONGODB_UR;
 const allowDemoFallback = process.env.NODE_ENV !== 'production';
 const databaseRetryIntervalMs = Math.max(5000, Number(process.env.DATABASE_RETRY_INTERVAL_MS || 30000));
 const staticAssetsPath = path.resolve(currentDirectory, '../../web/dist');
 const shouldServeStaticApp = process.env.NODE_ENV === 'production' && existsSync(staticAssetsPath);
+
+function resolveMongoConfiguration(environment = process.env) {
+  const exactCandidates = ['MONGODB_URI', 'MONGODB_UR', 'MONGO_URI', 'MONGO_URL', 'DATABASE_URL'];
+
+  for (const envKey of exactCandidates) {
+    const value = String(environment[envKey] || '').trim();
+
+    if (value) {
+      return {
+        envKey,
+        uri: value,
+      };
+    }
+  }
+
+  const discoveredEntry = Object.entries(environment).find(([envKey, value]) => {
+    const normalizedKey = String(envKey || '').toUpperCase();
+    const normalizedValue = String(value || '').trim();
+
+    return normalizedValue.startsWith('mongodb') && normalizedKey.includes('MONGO') && (normalizedKey.includes('URI') || normalizedKey.includes('URL') || normalizedKey.includes('CONNECTION'));
+  });
+
+  if (discoveredEntry) {
+    return {
+      envKey: discoveredEntry[0],
+      uri: String(discoveredEntry[1] || '').trim(),
+    };
+  }
+
+  return {
+    envKey: '',
+    uri: '',
+  };
+ }
+
+const mongoConfiguration = resolveMongoConfiguration();
+const mongoUri = mongoConfiguration.uri;
+const mongoEnvKey = mongoConfiguration.envKey;
 
 function setDatabaseStatus(app, databaseReady, databaseErrorMessage = '') {
   app.locals.databaseReady = Boolean(databaseReady);
@@ -53,7 +90,7 @@ function startDatabaseReconnectLoop(app) {
     }
 
     if (!mongoUri) {
-      setDatabaseStatus(app, false, 'MONGODB_URI is required before starting the API server. Legacy fallback: MONGODB_UR.');
+      setDatabaseStatus(app, false, 'A MongoDB connection string environment variable is required before starting the API server. Supported keys: MONGODB_URI, MONGODB_UR, MONGO_URI, MONGO_URL, DATABASE_URL.');
       return;
     }
 
@@ -98,6 +135,7 @@ async function startServer() {
     jwtSecret,
     databaseReady,
     databaseErrorMessage,
+    databaseEnvKey: mongoEnvKey,
     allowDemoFallback,
     staticAssetsPath: shouldServeStaticApp ? staticAssetsPath : null,
   });
