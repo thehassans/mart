@@ -154,8 +154,12 @@ function sanitizeBarcode(barcode) {
   return String(barcode || '').replace(/\s+/g, '').trim();
 }
 
-export async function listCatalogProducts({ databaseReady, tenantId, businessType, search = '' }) {
+export async function listCatalogProducts({ databaseReady, allowDemoFallback = true, tenantId, businessType, search = '' }) {
   if (!tenantId || !databaseReady) {
+    if (!allowDemoFallback) {
+      return [];
+    }
+
     return buildDemoCatalog({ businessType, search });
   }
 
@@ -184,14 +188,14 @@ export async function listCatalogProducts({ databaseReady, tenantId, businessTyp
   return sortProducts(products.map(mapProductDocument));
 }
 
-export async function resolveCatalogBarcode({ barcode, databaseReady, tenantId, businessType }) {
+export async function resolveCatalogBarcode({ barcode, databaseReady, allowDemoFallback = true, tenantId, businessType }) {
   const normalizedBarcode = sanitizeBarcode(barcode);
 
   if (!normalizedBarcode) {
     return null;
   }
 
-  const products = await listCatalogProducts({ databaseReady, tenantId, businessType });
+  const products = await listCatalogProducts({ databaseReady, allowDemoFallback, tenantId, businessType });
   const directMatch = products.find((product) => product.barcode === normalizedBarcode);
 
   if (directMatch) {

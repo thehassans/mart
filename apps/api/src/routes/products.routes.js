@@ -49,12 +49,17 @@ export function createProductsRouter({ jwtSecret }) {
       const tenantId = String(req.query.tenantId || '').trim();
       const businessType = resolveSupportedBusinessType(req.query.businessType);
       const search = String(req.query.search || '').trim();
+      const databaseReady = Boolean(req.app.locals.databaseReady);
+      const allowDemoFallback = req.app.locals.allowDemoFallback !== false;
       const products = await listCatalogProducts({
-        databaseReady: req.app.locals.databaseReady,
+        databaseReady,
+        allowDemoFallback,
         tenantId,
         businessType,
         search,
       });
+
+      const source = databaseReady && tenantId ? 'database' : allowDemoFallback ? 'demo' : 'unavailable';
 
       return res.json({
         products,
@@ -63,8 +68,9 @@ export function createProductsRouter({ jwtSecret }) {
           businessType,
           search,
         },
-        databaseReady: req.app.locals.databaseReady,
-        source: req.app.locals.databaseReady && tenantId ? 'database' : 'demo',
+        databaseReady,
+        allowDemoFallback,
+        source,
       });
     } catch (error) {
       return next(error);
@@ -76,6 +82,8 @@ export function createProductsRouter({ jwtSecret }) {
       const tenantId = String(req.query.tenantId || '').trim();
       const businessType = resolveSupportedBusinessType(req.query.businessType);
       const barcode = String(req.query.barcode || '').trim();
+      const databaseReady = Boolean(req.app.locals.databaseReady);
+      const allowDemoFallback = req.app.locals.allowDemoFallback !== false;
 
       if (!barcode) {
         return res.status(400).json({ message: 'Barcode is required for product resolution.' });
@@ -83,7 +91,8 @@ export function createProductsRouter({ jwtSecret }) {
 
       const resolution = await resolveCatalogBarcode({
         barcode,
-        databaseReady: req.app.locals.databaseReady,
+        databaseReady,
+        allowDemoFallback,
         tenantId,
         businessType,
       });
@@ -94,7 +103,8 @@ export function createProductsRouter({ jwtSecret }) {
 
       return res.json({
         resolution,
-        databaseReady: req.app.locals.databaseReady,
+        databaseReady,
+        allowDemoFallback,
       });
     } catch (error) {
       return next(error);

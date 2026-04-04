@@ -13,7 +13,7 @@ const port = Number(process.env.PORT || 5000);
 const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 const jwtSecret = process.env.JWT_SECRET || 'development-only-jwt-secret';
 const mongoUri = process.env.MONGODB_URI;
-const requireDatabase = process.env.NODE_ENV === 'production';
+const allowDemoFallback = process.env.NODE_ENV !== 'production';
 const staticAssetsPath = path.resolve(currentDirectory, '../../web/dist');
 const shouldServeStaticApp = process.env.NODE_ENV === 'production' && existsSync(staticAssetsPath);
 
@@ -24,17 +24,14 @@ async function startServer() {
     await connectDatabase(mongoUri);
     databaseReady = true;
   } catch (error) {
-    if (requireDatabase) {
-      throw new Error(`MongoDB connection is required in production: ${error.message}`);
-    }
-
-    console.warn('MongoDB connection unavailable. Starting API in demo mode.', error.message);
+    console.warn(`MongoDB connection unavailable. Starting API with databaseReady=false and allowDemoFallback=${allowDemoFallback}.`, error.message);
   }
 
   const app = createApp({
     clientOrigin,
     jwtSecret,
     databaseReady,
+    allowDemoFallback,
     staticAssetsPath: shouldServeStaticApp ? staticAssetsPath : null,
   });
 

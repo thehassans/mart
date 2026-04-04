@@ -8,9 +8,10 @@ import { createProductsRouter } from './routes/products.routes.js';
 import { systemRouter } from './routes/system.routes.js';
 import { createTenantRouter } from './routes/tenant.routes.js';
 
-export function createApp({ clientOrigin, jwtSecret, databaseReady = false, staticAssetsPath = null }) {
+export function createApp({ clientOrigin, jwtSecret, databaseReady = false, allowDemoFallback = true, staticAssetsPath = null }) {
   const app = express();
   app.locals.databaseReady = databaseReady;
+  app.locals.allowDemoFallback = allowDemoFallback;
 
   app.use(
     cors({
@@ -25,6 +26,7 @@ export function createApp({ clientOrigin, jwtSecret, databaseReady = false, stat
     res.json({
       message: 'Buysial ERP API is running.',
       databaseReady: app.locals.databaseReady,
+      allowDemoFallback: app.locals.allowDemoFallback,
     });
   });
 
