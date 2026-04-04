@@ -12,7 +12,7 @@ const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 5000);
 const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 const jwtSecret = process.env.JWT_SECRET || 'development-only-jwt-secret';
-const mongoUri = process.env.MONGODB_URI;
+const mongoUri = process.env.MONGODB_URI || process.env.MONGODB_UR;
 const allowDemoFallback = process.env.NODE_ENV !== 'production';
 const databaseRetryIntervalMs = Math.max(5000, Number(process.env.DATABASE_RETRY_INTERVAL_MS || 30000));
 const staticAssetsPath = path.resolve(currentDirectory, '../../web/dist');
@@ -53,7 +53,7 @@ function startDatabaseReconnectLoop(app) {
     }
 
     if (!mongoUri) {
-      setDatabaseStatus(app, false, 'MONGODB_URI is required before starting the API server.');
+      setDatabaseStatus(app, false, 'MONGODB_URI is required before starting the API server. Legacy fallback: MONGODB_UR.');
       return;
     }
 
