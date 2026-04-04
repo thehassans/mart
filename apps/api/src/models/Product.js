@@ -2,6 +2,12 @@ import mongoose from 'mongoose';
 import { PRODUCT_UNITS, SCALE_BARCODE_PREFIXES } from '@vitalblaze/shared';
 
 const PRODUCT_BARCODE_INDEX_NAME = 'tenantId_1_barcode_1';
+const PRODUCT_BARCODE_INDEX_PARTIAL_FILTER = {
+  barcode: {
+    $exists: true,
+    $gt: '',
+  },
+};
 
 function hasExpectedBarcodeIndex(barcodeIndex) {
   if (!barcodeIndex?.unique) {
@@ -10,7 +16,7 @@ function hasExpectedBarcodeIndex(barcodeIndex) {
 
   const barcodeFilter = barcodeIndex.partialFilterExpression?.barcode;
 
-  return barcodeFilter?.$type === 'string' && Array.isArray(barcodeFilter?.$nin) && barcodeFilter.$nin.includes('') && barcodeFilter.$nin.includes(null);
+  return barcodeFilter?.$exists === true && barcodeFilter?.$gt === '';
 }
 
 const localizedNameSchema = new mongoose.Schema(
@@ -176,7 +182,7 @@ const productSchema = new mongoose.Schema(
 );
 
 productSchema.index({ tenantId: 1, sku: 1 }, { unique: true });
-productSchema.index({ tenantId: 1, barcode: 1 }, { unique: true, partialFilterExpression: { barcode: { $type: 'string', $nin: ['', null] } } });
+productSchema.index({ tenantId: 1, barcode: 1 }, { unique: true, partialFilterExpression: PRODUCT_BARCODE_INDEX_PARTIAL_FILTER });
 productSchema.index({ tenantId: 1, 'name.en': 1, 'name.ar': 1 });
 
 productSchema.pre('validate', function normalizeOptionalBarcode(next) {
@@ -214,12 +220,7 @@ export async function ensureProductIndexes() {
     {
       name: PRODUCT_BARCODE_INDEX_NAME,
       unique: true,
-      partialFilterExpression: {
-        barcode: {
-          $type: 'string',
-          $nin: ['', null],
-        },
-      },
+      partialFilterExpression: PRODUCT_BARCODE_INDEX_PARTIAL_FILTER,
     }
   );
 }
