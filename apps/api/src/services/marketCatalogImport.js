@@ -323,6 +323,101 @@ function filterTamimiCategoryUrls(categoryUrls) {
   });
 }
 
+function parseTamimiLinkedCategoryUrls(html, currentCategoryUrl) {
+  const currentUrl = toAbsoluteUrl(currentCategoryUrl, TAMIMI_BASE_URL);
+  const linkedCategoryUrls = Array.from(String(html || '').matchAll(/<a[^>]+href=["']([^"']*\/category\/[^"']+)["'][^>]*>/gi))
+    .map((match) => toAbsoluteUrl(match[1], TAMIMI_BASE_URL))
+    .filter(Boolean);
+
+  return filterTamimiCategoryUrls(linkedCategoryUrls).filter((url) => url !== currentUrl);
+}
+
+async function scanTamimiCategoryGraph({ categoryUrls, maxProducts }) {
+  const rootCategoryUrls = filterTamimiCategoryUrls(categoryUrls);
+  const maxCategoryPages = Math.min(Math.max(rootCategoryUrls.length * 6, 40), 400);
+  const queuedCategoryUrls = new Set(rootCategoryUrls);
+  const visitedCategoryUrls = new Set();
+  const pendingCategoryUrls = [...rootCategoryUrls];
+  const discovered = [];
+  const failedCategoryUrls = [];
+  let categoriesScanned = 0;
+
+  while (pendingCategoryUrls.length > 0 && categoriesScanned < maxCategoryPages && discovered.length < maxProducts) {
+    const batch = [];
+
+    while (pendingCategoryUrls.length > 0 && batch.length < 4 && categoriesScanned + batch.length < maxCategoryPages) {
+      const nextCategoryUrl = pendingCategoryUrls.shift();
+      if (!nextCategoryUrl || visitedCategoryUrls.has(nextCategoryUrl)) {
+        continue;
+      }
+
+      visitedCategoryUrls.add(nextCategoryUrl);
+      batch.push(nextCategoryUrl);
+    }
+
+    if (batch.length === 0) {
+      break;
+    }
+
+    const batchResults = await mapWithConcurrencyLimit(batch, batch.length, async (categoryUrl) => {
+      try {
+        const html = await fetchText(categoryUrl);
+        return {
+          ok: true,
+          categoryUrl,
+          items: parseTamimiCategoryProducts(html, categoryUrl),
+          linkedCategoryUrls: parseTamimiLinkedCategoryUrls(html, categoryUrl),
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          categoryUrl,
+          message: error.message || 'Unable to fetch category page.',
+          items: [],
+          linkedCategoryUrls: [],
+        };
+      }
+    });
+
+    categoriesScanned += batch.length;
+
+    for (const result of batchResults) {
+      if (!result.ok) {
+        failedCategoryUrls.push({
+          url: result.categoryUrl,
+          message: result.message,
+        });
+        continue;
+      }
+
+      for (const item of result.items) {
+        if (discovered.length >= maxProducts) {
+          break;
+        }
+
+        discovered.push(item);
+      }
+
+      if (discovered.length < maxProducts) {
+        for (const linkedCategoryUrl of result.linkedCategoryUrls) {
+          if (queuedCategoryUrls.has(linkedCategoryUrl) || visitedCategoryUrls.has(linkedCategoryUrl)) {
+            continue;
+          }
+
+          queuedCategoryUrls.add(linkedCategoryUrl);
+          pendingCategoryUrls.push(linkedCategoryUrl);
+        }
+      }
+    }
+  }
+
+  return {
+    discovered,
+    categoriesScanned,
+    failedCategoryUrls,
+  };
+}
+
 export async function discoverMarketImportCategoryUrls(sourceKey = 'tamimi') {
   const source = SUPPORTED_SOURCES[sourceKey];
 
@@ -410,48 +505,18 @@ export async function previewMarketImport({ sourceKey = 'tamimi', categoryUrls =
   const resolvedCategoryUrls = await resolveRequestedCategoryUrls(source, categoryUrls);
   const limitedMaxProducts = clampMaxProducts(maxProducts);
   const limitedDetailEnrichment = enrichProducts ? clampDetailEnrichmentLimit(detailEnrichmentLimit, Math.min(60, limitedMaxProducts)) : 0;
-  const scannedCategoryUrls = resolvedCategoryUrls.slice(0, Math.max(1, limitedMaxProducts));
-  const categoryResults = await mapWithConcurrencyLimit(scannedCategoryUrls, 4, async (categoryUrl) => {
-    try {
-      const html = await fetchText(categoryUrl);
-      return {
-        ok: true,
-        categoryUrl,
-        items: parseTamimiCategoryProducts(html, categoryUrl),
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        categoryUrl,
-        message: error.message || 'Unable to fetch category page.',
-        items: [],
-      };
-    }
-  });
+  const scanResult = source.key === 'tamimi'
+    ? await scanTamimiCategoryGraph({
+      categoryUrls: resolvedCategoryUrls,
+      maxProducts: limitedMaxProducts,
+    })
+    : {
+      discovered: [],
+      categoriesScanned: 0,
+      failedCategoryUrls: [],
+    };
 
-  const failedCategoryUrls = categoryResults
-    .filter((result) => !result.ok)
-    .map((result) => ({
-      url: result.categoryUrl,
-      message: result.message,
-    }));
-  const discovered = [];
-
-  for (const result of categoryResults) {
-    for (const item of result.items) {
-      if (discovered.length >= limitedMaxProducts) {
-        break;
-      }
-
-      discovered.push(item);
-    }
-
-    if (discovered.length >= limitedMaxProducts) {
-      break;
-    }
-  }
-
-  const uniqueItems = Array.from(new Map(discovered.map((item) => [item.slug, item])).values()).slice(0, limitedMaxProducts);
+  const uniqueItems = Array.from(new Map(scanResult.discovered.map((item) => [item.slug, item])).values()).slice(0, limitedMaxProducts);
   const baseItems = [...uniqueItems];
   const items = [...baseItems];
   let enrichedCount = 0;
@@ -468,9 +533,9 @@ export async function previewMarketImport({ sourceKey = 'tamimi', categoryUrls =
     source: source.key,
     sourceLabel: source.label,
     categoryUrls: resolvedCategoryUrls,
-    categoriesScanned: scannedCategoryUrls.length,
-    failedCategoryCount: failedCategoryUrls.length,
-    failedCategoryUrls,
+    categoriesScanned: scanResult.categoriesScanned,
+    failedCategoryCount: scanResult.failedCategoryUrls.length,
+    failedCategoryUrls: scanResult.failedCategoryUrls,
     enrichedCount,
     totalDiscovered: items.length,
     items,
