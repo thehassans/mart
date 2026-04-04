@@ -1,6 +1,18 @@
 import mongoose from 'mongoose';
 import { PRODUCT_UNITS, SCALE_BARCODE_PREFIXES } from '@vitalblaze/shared';
 
+const PRODUCT_BARCODE_INDEX_NAME = 'tenantId_1_barcode_1';
+
+function hasExpectedBarcodeIndex(barcodeIndex) {
+  if (!barcodeIndex?.unique) {
+    return false;
+  }
+
+  const barcodeFilter = barcodeIndex.partialFilterExpression?.barcode;
+
+  return barcodeFilter?.$type === 'string' && Array.isArray(barcodeFilter?.$nin) && barcodeFilter.$nin.includes('') && barcodeFilter.$nin.includes(null);
+}
+
 const localizedNameSchema = new mongoose.Schema(
   {
     en: {
@@ -164,8 +176,17 @@ const productSchema = new mongoose.Schema(
 );
 
 productSchema.index({ tenantId: 1, sku: 1 }, { unique: true });
-productSchema.index({ tenantId: 1, barcode: 1 }, { unique: true, sparse: true });
+productSchema.index({ tenantId: 1, barcode: 1 }, { unique: true, partialFilterExpression: { barcode: { $type: 'string', $nin: ['', null] } } });
 productSchema.index({ tenantId: 1, 'name.en': 1, 'name.ar': 1 });
+
+productSchema.pre('validate', function normalizeOptionalBarcode(next) {
+  if (this.barcode != null) {
+    const normalizedBarcode = String(this.barcode || '').trim();
+    this.barcode = normalizedBarcode || undefined;
+  }
+
+  return next();
+});
 
 productSchema.pre('validate', function validateWeighedItem(next) {
   if (this.isWeighedItem && !this.scaleItemCode) {
@@ -176,3 +197,29 @@ productSchema.pre('validate', function validateWeighedItem(next) {
 });
 
 export const Product = mongoose.model('Product', productSchema);
+
+export async function ensureProductIndexes() {
+  await Product.createCollection().catch(() => null);
+  await Product.updateMany({ barcode: { $in: [null, ''] } }, { $unset: { barcode: 1 } });
+
+  const indexes = await Product.collection.indexes();
+  const barcodeIndex = indexes.find((index) => index.name === PRODUCT_BARCODE_INDEX_NAME);
+
+  if (barcodeIndex && !hasExpectedBarcodeIndex(barcodeIndex)) {
+    await Product.collection.dropIndex(PRODUCT_BARCODE_INDEX_NAME);
+  }
+
+  await Product.collection.createIndex(
+    { tenantId: 1, barcode: 1 },
+    {
+      name: PRODUCT_BARCODE_INDEX_NAME,
+      unique: true,
+      partialFilterExpression: {
+        barcode: {
+          $type: 'string',
+          $nin: ['', null],
+        },
+      },
+    }
+  );
+}

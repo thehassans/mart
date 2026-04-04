@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { connectDatabase, getDatabaseConnection } from './config/database.js';
+import { ensureProductIndexes } from './models/Product.js';
 
 dotenv.config();
 
@@ -61,15 +62,24 @@ function setDatabaseStatus(app, databaseReady, databaseErrorMessage = '') {
   app.locals.databaseLastUpdatedAt = new Date().toISOString();
 }
 
+async function finalizeDatabaseReadiness(app) {
+  await ensureProductIndexes();
+  setDatabaseStatus(app, true, '');
+}
+
 function attachDatabaseConnectionObservers(app) {
   const databaseConnection = getDatabaseConnection();
 
   databaseConnection.on('connected', () => {
-    setDatabaseStatus(app, true, '');
+    void finalizeDatabaseReadiness(app).catch((error) => {
+      setDatabaseStatus(app, false, error.message || 'Unable to prepare product indexes.');
+    });
   });
 
   databaseConnection.on('reconnected', () => {
-    setDatabaseStatus(app, true, '');
+    void finalizeDatabaseReadiness(app).catch((error) => {
+      setDatabaseStatus(app, false, error.message || 'Unable to prepare product indexes.');
+    });
   });
 
   databaseConnection.on('disconnected', () => {
@@ -98,7 +108,7 @@ function startDatabaseReconnectLoop(app) {
 
     try {
       await connectDatabase(mongoUri);
-      setDatabaseStatus(app, true, '');
+      await finalizeDatabaseReadiness(app);
     } catch (error) {
       const message = error.message || 'MongoDB connection unavailable.';
       setDatabaseStatus(app, false, message);
@@ -124,6 +134,7 @@ async function startServer() {
 
   try {
     await connectDatabase(mongoUri);
+    await ensureProductIndexes();
     databaseReady = true;
   } catch (error) {
     databaseErrorMessage = error.message || 'MongoDB connection unavailable.';

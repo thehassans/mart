@@ -20,7 +20,7 @@ export default function AdminInventoryPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [sources, setSources] = useState([]);
   const [sourceKey, setSourceKey] = useState('tamimi');
-  const [maxProducts, setMaxProducts] = useState('250');
+  const [maxProducts, setMaxProducts] = useState('2000');
   const [detailEnrichmentLimit, setDetailEnrichmentLimit] = useState('60');
   const [categoryUrls, setCategoryUrls] = useState('');
   const [discoveredCategoryCount, setDiscoveredCategoryCount] = useState(0);
@@ -29,7 +29,6 @@ export default function AdminInventoryPage() {
   const [statusMessage, setStatusMessage] = useState('');
   const [isDiscoveringCategories, setIsDiscoveringCategories] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const { products, source, errorMessage } = useCatalogProducts({ businessType, session, reloadKey, allowDemoFallback: false });
   const token = String(session?.token || '').trim();
   const tenantId = String(session?.user?.tenantId || '').trim();
@@ -78,7 +77,7 @@ export default function AdminInventoryPage() {
   }, [token]);
 
   async function handlePreviewImport() {
-    if (!token) {
+    if (!token || !tenantId) {
       return;
     }
 
@@ -93,6 +92,7 @@ export default function AdminInventoryPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          tenantId,
           sourceKey,
           maxProducts: Number(maxProducts || 0),
           detailEnrichmentLimit: Number(detailEnrichmentLimit || 0),
@@ -101,6 +101,9 @@ export default function AdminInventoryPage() {
             .map((value) => value.trim())
             .filter(Boolean),
           enrichProducts: true,
+          persistToCatalog: true,
+          allowUpdate: true,
+          defaultVatRate: 15,
         }),
       });
       const payload = await response.json();
@@ -115,7 +118,8 @@ export default function AdminInventoryPage() {
 
       setPreviewMeta(payload.preview || null);
       setPreviewItems(Array.isArray(payload.preview?.items) ? payload.preview.items : []);
-      setStatusMessage(`Preview loaded: ${payload.preview?.totalDiscovered || 0} products from ${payload.preview?.sourceLabel || sourceKey}. Categories scanned: ${payload.preview?.categoriesScanned || 0}. Failed categories: ${payload.preview?.failedCategoryCount || 0}.`);
+      setReloadKey((currentValue) => currentValue + 1);
+      setStatusMessage(`Import complete: created ${payload.summary?.created || 0}, updated ${payload.summary?.updated || 0}, skipped ${payload.summary?.skipped || 0}. Products discovered: ${payload.preview?.totalDiscovered || 0}. Categories scanned: ${payload.preview?.categoriesScanned || 0}. Failed categories: ${payload.preview?.failedCategoryCount || 0}.`);
     } catch (error) {
       setStatusMessage(error.message || 'Unable to preview market import.');
     } finally {
@@ -159,54 +163,6 @@ export default function AdminInventoryPage() {
     }
   }
 
-  async function handleSyncImport() {
-    if (!token || !tenantId) {
-      return;
-    }
-
-    setIsSyncing(true);
-    setStatusMessage('');
-
-    try {
-      const response = await fetch(`${resolveApiBaseUrl()}/api/products/import/sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          tenantId,
-          sourceKey,
-          maxProducts: Number(maxProducts || 0),
-          detailEnrichmentLimit: Number(detailEnrichmentLimit || 0),
-          categoryUrls: categoryUrls
-            .split(/\r?\n/)
-            .map((value) => value.trim())
-            .filter(Boolean),
-          enrichProducts: true,
-          allowUpdate: true,
-          defaultVatRate: 15,
-        }),
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          clearStoredAdminSession();
-        }
-
-        throw new Error(payload.message || 'Unable to sync imported products.');
-      }
-
-      setReloadKey((currentValue) => currentValue + 1);
-      setStatusMessage(`Import complete: created ${payload.summary?.created || 0}, updated ${payload.summary?.updated || 0}, skipped ${payload.summary?.skipped || 0}. Categories scanned: ${payload.summary?.categoriesScanned || 0}. Failed categories: ${payload.summary?.failedCategoryCount || 0}.`);
-    } catch (error) {
-      setStatusMessage(error.message || 'Unable to sync imported products.');
-    } finally {
-      setIsSyncing(false);
-    }
-  }
-
   return (
     <div className="space-y-8">
       <WorkspaceHero eyebrow={t('inventory.eyebrow')} subtitle={t('inventory.subtitle')} title={t('workspaceNav.inventory')} />
@@ -215,8 +171,8 @@ export default function AdminInventoryPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-indigo-600 dark:text-indigo-200">Saudi Market Import</p>
-            <h3 className="mt-2 text-xl font-semibold">Bulk import retailer products into your inventory</h3>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">Preview accessible market catalog products first, then sync them into this tenant. Leaving category URLs empty now uses the wider source sitemap when supported.</p>
+            <h3 className="mt-2 text-xl font-semibold">Bulk import retailer products directly into your inventory</h3>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">Load market categories, then auto-add discovered products straight into this tenant catalog. Leaving category URLs empty now uses the wider source sitemap when supported.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <StatusBadge tone={source === 'database' ? 'success' : source === 'unavailable' ? 'danger' : 'warning'}>{source === 'database' ? 'Live DB Catalog' : source === 'unavailable' ? 'Live Catalog Unavailable' : 'API Fallback'}</StatusBadge>
@@ -252,10 +208,7 @@ export default function AdminInventoryPage() {
             {isDiscoveringCategories ? 'Loading Categories...' : 'Load Source Categories'}
           </Button>
           <Button onClick={handlePreviewImport} type="button" variant="secondary">
-            {isPreviewing ? 'Loading Preview...' : 'Preview Import'}
-          </Button>
-          <Button onClick={handleSyncImport} type="button">
-            {isSyncing ? 'Syncing Products...' : 'Sync To Inventory'}
+            {isPreviewing ? 'Importing Products...' : 'Auto Add To DB'}
           </Button>
         </div>
 

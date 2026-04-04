@@ -596,17 +596,7 @@ function buildImportedProductPayload({ tenantId, categoryId, item, defaultVatRat
   };
 }
 
-export async function syncMarketImportToCatalog({
-  tenantId,
-  sourceKey = 'tamimi',
-  categoryUrls = [],
-  maxProducts = 250,
-  enrichProducts = true,
-  detailEnrichmentLimit = 60,
-  defaultVatRate = 15,
-  allowUpdate = true,
-}) {
-  const preview = await previewMarketImport({ sourceKey, categoryUrls, maxProducts, enrichProducts, detailEnrichmentLimit });
+export async function importMarketPreviewToCatalog({ tenantId, preview, defaultVatRate = 15, allowUpdate = true }) {
   const summary = {
     source: preview.source,
     sourceLabel: preview.sourceLabel,
@@ -647,6 +637,7 @@ export async function syncMarketImportToCatalog({
       { tenantId, sku: payload.sku },
       {
         $set: payload,
+        $unset: payload.barcode ? {} : { barcode: 1 },
       },
       {
         new: true,
@@ -672,4 +663,23 @@ export async function syncMarketImportToCatalog({
   }
 
   return summary;
+}
+
+export async function syncMarketImportToCatalog({
+  tenantId,
+  sourceKey = 'tamimi',
+  categoryUrls = [],
+  maxProducts = 250,
+  enrichProducts = true,
+  detailEnrichmentLimit = 60,
+  defaultVatRate = 15,
+  allowUpdate = true,
+}) {
+  const preview = await previewMarketImport({ sourceKey, categoryUrls, maxProducts, enrichProducts, detailEnrichmentLimit });
+  return importMarketPreviewToCatalog({
+    tenantId,
+    preview,
+    defaultVatRate,
+    allowUpdate,
+  });
 }

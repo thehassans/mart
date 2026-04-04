@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import { BUSINESS_TYPES, USER_ROLES } from '@vitalblaze/shared';
 import { authenticateJwt, authorizeRoles, enforceTenantScope } from '../middleware/auth.js';
 import {
@@ -10,6 +11,7 @@ import {
 import {
   discoverMarketImportCategoryUrls,
   getSupportedMarketImportSources,
+  importMarketPreviewToCatalog,
   previewMarketImport,
   syncMarketImportToCatalog,
 } from '../services/marketCatalogImport.js';
@@ -144,6 +146,10 @@ export function createProductsRouter({ jwtSecret }) {
     authorizeRoles(USER_ROLES.SUPER_ADMIN, USER_ROLES.STORE_ADMIN, USER_ROLES.MANAGER),
     async (req, res, next) => {
       try {
+        if (!req.app.locals.databaseReady) {
+          return res.status(503).json({ message: req.app.locals.databaseErrorMessage || 'Market import preview is unavailable because MongoDB is not connected.' });
+        }
+
         const payload = req.body || {};
         const preview = await previewMarketImport({
           sourceKey: payload.sourceKey,
@@ -153,8 +159,36 @@ export function createProductsRouter({ jwtSecret }) {
           detailEnrichmentLimit: payload.detailEnrichmentLimit,
         });
 
+        if (!payload.persistToCatalog) {
+          return res.json({
+            preview,
+          });
+        }
+
+        const tenantId = String(payload.tenantId || '').trim();
+
+        if (!tenantId) {
+          return res.status(400).json({ message: 'tenantId is required to import previewed products into the catalog.' });
+        }
+
+        if (!mongoose.isValidObjectId(tenantId)) {
+          return res.status(400).json({ message: 'tenantId must be a valid MongoDB ObjectId.' });
+        }
+
+        if (req.auth?.role !== USER_ROLES.SUPER_ADMIN && String(req.auth?.tenantId || '') !== tenantId) {
+          return res.status(403).json({ message: 'Tenant scope violation detected.' });
+        }
+
+        const summary = await importMarketPreviewToCatalog({
+          tenantId,
+          preview,
+          defaultVatRate: payload.defaultVatRate,
+          allowUpdate: payload.allowUpdate !== false,
+        });
+
         return res.json({
           preview,
+          summary,
         });
       } catch (error) {
         return next(error);
