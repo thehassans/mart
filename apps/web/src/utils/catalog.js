@@ -5,7 +5,7 @@ import { resolveApiBaseUrl } from './api.js';
 
 function resolveCatalogUnavailableMessage(payload) {
   if (payload?.databaseReady === false) {
-    return 'Live catalog is unavailable because the API is running without MongoDB.';
+    return payload?.databaseErrorMessage || 'Live catalog is unavailable because the API is running without MongoDB.';
   }
 
   return 'Unable to load live catalog products right now.';

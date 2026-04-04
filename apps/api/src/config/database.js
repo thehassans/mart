@@ -9,8 +9,13 @@ export async function connectDatabase(connectionString) {
 
   await mongoose.connect(connectionString, {
     autoIndex: true,
-    serverSelectionTimeoutMS: 3000,
+    family: 4,
+    serverSelectionTimeoutMS: 10000,
   });
 
+  return mongoose.connection;
+}
+
+export function getDatabaseConnection() {
   return mongoose.connection;
 }

@@ -50,6 +50,7 @@ export function createProductsRouter({ jwtSecret }) {
       const businessType = resolveSupportedBusinessType(req.query.businessType);
       const search = String(req.query.search || '').trim();
       const databaseReady = Boolean(req.app.locals.databaseReady);
+      const databaseErrorMessage = String(req.app.locals.databaseErrorMessage || '').trim();
       const allowDemoFallback = req.app.locals.allowDemoFallback !== false;
       const products = await listCatalogProducts({
         databaseReady,
@@ -69,6 +70,7 @@ export function createProductsRouter({ jwtSecret }) {
           search,
         },
         databaseReady,
+        databaseErrorMessage,
         allowDemoFallback,
         source,
       });
@@ -83,6 +85,7 @@ export function createProductsRouter({ jwtSecret }) {
       const businessType = resolveSupportedBusinessType(req.query.businessType);
       const barcode = String(req.query.barcode || '').trim();
       const databaseReady = Boolean(req.app.locals.databaseReady);
+      const databaseErrorMessage = String(req.app.locals.databaseErrorMessage || '').trim();
       const allowDemoFallback = req.app.locals.allowDemoFallback !== false;
 
       if (!barcode) {
@@ -104,6 +107,7 @@ export function createProductsRouter({ jwtSecret }) {
       return res.json({
         resolution,
         databaseReady,
+        databaseErrorMessage,
         allowDemoFallback,
       });
     } catch (error) {
@@ -166,7 +170,7 @@ export function createProductsRouter({ jwtSecret }) {
     async (req, res, next) => {
       try {
         if (!req.app.locals.databaseReady) {
-          return res.status(503).json({ message: 'Market import sync is unavailable in demo mode.' });
+          return res.status(503).json({ message: req.app.locals.databaseErrorMessage || 'Market import sync is unavailable because MongoDB is not connected.' });
         }
 
         const payload = req.body || {};
@@ -198,7 +202,7 @@ export function createProductsRouter({ jwtSecret }) {
     async (req, res, next) => {
       try {
         if (!req.app.locals.databaseReady) {
-          return res.status(503).json({ message: 'Product creation is unavailable in demo mode.' });
+          return res.status(503).json({ message: req.app.locals.databaseErrorMessage || 'Product creation is unavailable because MongoDB is not connected.' });
         }
 
         const product = await createCatalogProduct(req.body || {});
@@ -217,7 +221,7 @@ export function createProductsRouter({ jwtSecret }) {
     async (req, res, next) => {
       try {
         if (!req.app.locals.databaseReady) {
-          return res.status(503).json({ message: 'Barcode import is unavailable in demo mode.' });
+          return res.status(503).json({ message: req.app.locals.databaseErrorMessage || 'Barcode import is unavailable because MongoDB is not connected.' });
         }
 
         const payload = req.body || {};
