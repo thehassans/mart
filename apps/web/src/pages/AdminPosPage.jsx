@@ -8,12 +8,13 @@ import { useCatalogProducts } from '../utils/catalog.js';
 export default function AdminPosPage() {
   const { t } = useTranslation();
   const { businessType, setBusinessType, session } = useOutletContext();
-  const { products } = useCatalogProducts({ businessType, session });
+  const { products, errorMessage } = useCatalogProducts({ businessType, session, allowDemoFallback: false });
 
   return (
     <div className="space-y-8">
       <WorkspaceHero eyebrow={t('pos.eyebrow')} subtitle={t('pos.subtitle')} title={t('workspaceNav.pos')} />
       <BusinessTypeSelector businessType={businessType} onChange={setBusinessType} />
+      {errorMessage ? <p className="text-sm text-rose-600 dark:text-rose-300">{errorMessage}</p> : null}
       <POSInterface businessType={businessType} products={products} />
     </div>
   );

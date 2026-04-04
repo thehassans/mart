@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { demoProducts } from '../data/demo.js';
+import { clearStoredAdminSession } from './adminSession.js';
 import { resolveApiBaseUrl } from './api.js';
+
+function resolveCatalogUnavailableMessage(payload) {
+  if (payload?.databaseReady === false) {
+    return 'Live catalog is unavailable because the API is running without MongoDB.';
+  }
+
+  return 'Unable to load live catalog products right now.';
+}
 
 function filterProducts(products, businessType, search = '') {
   const filteredByType = products.filter((product) => product.businessTypes.includes(businessType));
@@ -45,7 +54,7 @@ function buildCatalogUrl({ businessType, tenantId, search }) {
   return `${resolveApiBaseUrl()}/api/products?${params.toString()}`;
 }
 
-export function useCatalogProducts({ businessType, session = null, search = '', reloadKey = 0 }) {
+export function useCatalogProducts({ businessType, session = null, search = '', reloadKey = 0, allowDemoFallback = true }) {
   const fallbackProducts = useMemo(() => filterProducts(demoProducts, businessType, search), [businessType, search]);
   const [products, setProducts] = useState(fallbackProducts);
   const [isLoading, setIsLoading] = useState(false);
@@ -72,6 +81,10 @@ export function useCatalogProducts({ businessType, session = null, search = '', 
         const payload = await response.json();
 
         if (!response.ok) {
+          if (response.status === 401 && token) {
+            clearStoredAdminSession();
+          }
+
           throw new Error(payload.message || 'Unable to load catalog products right now.');
         }
 
@@ -79,15 +92,20 @@ export function useCatalogProducts({ businessType, session = null, search = '', 
           return;
         }
 
-        setProducts(Array.isArray(payload.products) ? payload.products : []);
-        setSource(payload.source || 'api');
+        const resolvedProducts = Array.isArray(payload.products) ? payload.products : [];
+        const resolvedSource = payload.source || 'api';
+        const shouldSuppressDemoFallback = !allowDemoFallback && resolvedSource !== 'database';
+
+        setProducts(shouldSuppressDemoFallback ? [] : resolvedProducts);
+        setErrorMessage(shouldSuppressDemoFallback ? resolveCatalogUnavailableMessage(payload) : '');
+        setSource(resolvedSource);
       } catch (error) {
         if (isCancelled) {
           return;
         }
 
-        setProducts(fallbackProducts);
-        setSource('demo');
+        setProducts(allowDemoFallback ? fallbackProducts : []);
+        setSource(allowDemoFallback ? 'demo' : 'unavailable');
         setErrorMessage(error.message || 'Unable to load live catalog right now.');
       } finally {
         if (!isCancelled) {
@@ -101,7 +119,7 @@ export function useCatalogProducts({ businessType, session = null, search = '', 
     return () => {
       isCancelled = true;
     };
-  }, [businessType, fallbackProducts, reloadKey, search, tenantId, token]);
+  }, [allowDemoFallback, businessType, fallbackProducts, reloadKey, search, tenantId, token]);
 
   return {
     products,

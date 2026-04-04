@@ -9,6 +9,7 @@ import Field from '../components/ui/Field.jsx';
 import GlassPanel from '../components/ui/GlassPanel.jsx';
 import StatusBadge from '../components/ui/StatusBadge.jsx';
 import WorkspaceHero from '../components/ui/WorkspaceHero.jsx';
+import { clearStoredAdminSession } from '../utils/adminSession.js';
 import { resolveApiBaseUrl } from '../utils/api.js';
 import { useCatalogProducts } from '../utils/catalog.js';
 
@@ -29,7 +30,7 @@ export default function AdminInventoryPage() {
   const [isDiscoveringCategories, setIsDiscoveringCategories] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const { products, source } = useCatalogProducts({ businessType, session, reloadKey });
+  const { products, source, errorMessage } = useCatalogProducts({ businessType, session, reloadKey, allowDemoFallback: false });
   const token = String(session?.token || '').trim();
   const tenantId = String(session?.user?.tenantId || '').trim();
 
@@ -50,6 +51,10 @@ export default function AdminInventoryPage() {
         const payload = await response.json();
 
         if (!response.ok) {
+          if (response.status === 401) {
+            clearStoredAdminSession();
+          }
+
           throw new Error(payload.message || 'Unable to load market import sources.');
         }
 
@@ -101,6 +106,10 @@ export default function AdminInventoryPage() {
       const payload = await response.json();
 
       if (!response.ok) {
+        if (response.status === 401) {
+          clearStoredAdminSession();
+        }
+
         throw new Error(payload.message || 'Unable to preview market import.');
       }
 
@@ -132,6 +141,10 @@ export default function AdminInventoryPage() {
       const payload = await response.json();
 
       if (!response.ok) {
+        if (response.status === 401) {
+          clearStoredAdminSession();
+        }
+
         throw new Error(payload.message || 'Unable to discover market categories.');
       }
 
@@ -178,6 +191,10 @@ export default function AdminInventoryPage() {
       const payload = await response.json();
 
       if (!response.ok) {
+        if (response.status === 401) {
+          clearStoredAdminSession();
+        }
+
         throw new Error(payload.message || 'Unable to sync imported products.');
       }
 
@@ -202,13 +219,16 @@ export default function AdminInventoryPage() {
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">Preview accessible market catalog products first, then sync them into this tenant. Leaving category URLs empty now uses the wider source sitemap when supported.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <StatusBadge tone={source === 'database' ? 'success' : 'warning'}>{source === 'database' ? 'Live DB Catalog' : 'Demo/API Fallback'}</StatusBadge>
+            <StatusBadge tone={source === 'database' ? 'success' : source === 'unavailable' ? 'danger' : 'warning'}>{source === 'database' ? 'Live DB Catalog' : source === 'unavailable' ? 'Live Catalog Unavailable' : 'API Fallback'}</StatusBadge>
             {previewMeta ? <StatusBadge tone="neutral">Preview: {previewMeta.totalDiscovered}</StatusBadge> : null}
             {previewMeta?.categoriesScanned ? <StatusBadge tone="neutral">Categories: {previewMeta.categoriesScanned}</StatusBadge> : null}
             {previewMeta?.enrichedCount ? <StatusBadge tone="neutral">Enriched: {previewMeta.enrichedCount}</StatusBadge> : null}
             {previewMeta?.failedCategoryCount ? <StatusBadge tone="warning">Failed Categories: {previewMeta.failedCategoryCount}</StatusBadge> : null}
           </div>
         </div>
+
+        {errorMessage ? <p className="mt-4 text-sm text-rose-600 dark:text-rose-300">{errorMessage}</p> : null}
+        {!token ? <p className="mt-2 text-sm text-amber-600 dark:text-amber-300">Admin session is missing or expired. Sign in again before previewing or syncing imports.</p> : null}
 
         <div className="mt-6 grid gap-4 lg:grid-cols-4">
           <Field as="select" label="Market source" name="sourceKey" onChange={(event) => setSourceKey(event.target.value)} value={sourceKey}>
