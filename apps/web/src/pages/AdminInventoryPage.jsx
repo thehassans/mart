@@ -19,11 +19,14 @@ export default function AdminInventoryPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [sources, setSources] = useState([]);
   const [sourceKey, setSourceKey] = useState('tamimi');
-  const [maxProducts, setMaxProducts] = useState('80');
+  const [maxProducts, setMaxProducts] = useState('250');
+  const [detailEnrichmentLimit, setDetailEnrichmentLimit] = useState('60');
   const [categoryUrls, setCategoryUrls] = useState('');
+  const [discoveredCategoryCount, setDiscoveredCategoryCount] = useState(0);
   const [previewItems, setPreviewItems] = useState([]);
   const [previewMeta, setPreviewMeta] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
+  const [isDiscoveringCategories, setIsDiscoveringCategories] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const { products, source } = useCatalogProducts({ businessType, session, reloadKey });
@@ -87,6 +90,7 @@ export default function AdminInventoryPage() {
         body: JSON.stringify({
           sourceKey,
           maxProducts: Number(maxProducts || 0),
+          detailEnrichmentLimit: Number(detailEnrichmentLimit || 0),
           categoryUrls: categoryUrls
             .split(/\r?\n/)
             .map((value) => value.trim())
@@ -102,11 +106,43 @@ export default function AdminInventoryPage() {
 
       setPreviewMeta(payload.preview || null);
       setPreviewItems(Array.isArray(payload.preview?.items) ? payload.preview.items : []);
-      setStatusMessage(`Preview loaded: ${payload.preview?.totalDiscovered || 0} products from ${payload.preview?.sourceLabel || sourceKey}.`);
+      setStatusMessage(`Preview loaded: ${payload.preview?.totalDiscovered || 0} products from ${payload.preview?.sourceLabel || sourceKey}. Categories scanned: ${payload.preview?.categoriesScanned || 0}. Failed categories: ${payload.preview?.failedCategoryCount || 0}.`);
     } catch (error) {
       setStatusMessage(error.message || 'Unable to preview market import.');
     } finally {
       setIsPreviewing(false);
+    }
+  }
+
+  async function handleDiscoverCategories() {
+    if (!token) {
+      return;
+    }
+
+    setIsDiscoveringCategories(true);
+    setStatusMessage('');
+
+    try {
+      const params = new URLSearchParams({ sourceKey });
+      const response = await fetch(`${resolveApiBaseUrl()}/api/products/import-categories?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.message || 'Unable to discover market categories.');
+      }
+
+      const resolvedUrls = Array.isArray(payload.categoryUrls) ? payload.categoryUrls : [];
+      setDiscoveredCategoryCount(resolvedUrls.length);
+      setCategoryUrls(resolvedUrls.join('\n'));
+      setStatusMessage(`Loaded ${resolvedUrls.length} category URLs for ${payload.sourceKey}.`);
+    } catch (error) {
+      setStatusMessage(error.message || 'Unable to discover market categories.');
+    } finally {
+      setIsDiscoveringCategories(false);
     }
   }
 
@@ -129,6 +165,7 @@ export default function AdminInventoryPage() {
           tenantId,
           sourceKey,
           maxProducts: Number(maxProducts || 0),
+          detailEnrichmentLimit: Number(detailEnrichmentLimit || 0),
           categoryUrls: categoryUrls
             .split(/\r?\n/)
             .map((value) => value.trim())
@@ -145,7 +182,7 @@ export default function AdminInventoryPage() {
       }
 
       setReloadKey((currentValue) => currentValue + 1);
-      setStatusMessage(`Import complete: created ${payload.summary?.created || 0}, updated ${payload.summary?.updated || 0}, skipped ${payload.summary?.skipped || 0}.`);
+      setStatusMessage(`Import complete: created ${payload.summary?.created || 0}, updated ${payload.summary?.updated || 0}, skipped ${payload.summary?.skipped || 0}. Categories scanned: ${payload.summary?.categoriesScanned || 0}. Failed categories: ${payload.summary?.failedCategoryCount || 0}.`);
     } catch (error) {
       setStatusMessage(error.message || 'Unable to sync imported products.');
     } finally {
@@ -162,15 +199,18 @@ export default function AdminInventoryPage() {
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-indigo-600 dark:text-indigo-200">Saudi Market Import</p>
             <h3 className="mt-2 text-xl font-semibold">Bulk import retailer products into your inventory</h3>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">Preview accessible market catalog products first, then sync them into this tenant.</p>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">Preview accessible market catalog products first, then sync them into this tenant. Leaving category URLs empty now uses the wider source sitemap when supported.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <StatusBadge tone={source === 'database' ? 'success' : 'warning'}>{source === 'database' ? 'Live DB Catalog' : 'Demo/API Fallback'}</StatusBadge>
             {previewMeta ? <StatusBadge tone="neutral">Preview: {previewMeta.totalDiscovered}</StatusBadge> : null}
+            {previewMeta?.categoriesScanned ? <StatusBadge tone="neutral">Categories: {previewMeta.categoriesScanned}</StatusBadge> : null}
+            {previewMeta?.enrichedCount ? <StatusBadge tone="neutral">Enriched: {previewMeta.enrichedCount}</StatusBadge> : null}
+            {previewMeta?.failedCategoryCount ? <StatusBadge tone="warning">Failed Categories: {previewMeta.failedCategoryCount}</StatusBadge> : null}
           </div>
         </div>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-3">
+        <div className="mt-6 grid gap-4 lg:grid-cols-4">
           <Field as="select" label="Market source" name="sourceKey" onChange={(event) => setSourceKey(event.target.value)} value={sourceKey}>
             {(sources.length > 0 ? sources : [{ key: 'tamimi', label: 'Tamimi Markets' }]).map((marketSource) => (
               <option key={marketSource.key} value={marketSource.key}>
@@ -179,6 +219,7 @@ export default function AdminInventoryPage() {
             ))}
           </Field>
           <Field label="Max products" name="maxProducts" onChange={(event) => setMaxProducts(event.target.value)} type="number" value={maxProducts} />
+          <Field label="Detail enrich limit" name="detailEnrichmentLimit" onChange={(event) => setDetailEnrichmentLimit(event.target.value)} type="number" value={detailEnrichmentLimit} />
           <Field label="Tenant scope" name="tenantScope" readOnly value={tenantId || 'No tenant'} />
         </div>
 
@@ -187,6 +228,9 @@ export default function AdminInventoryPage() {
         </div>
 
         <div className="mt-6 flex flex-wrap gap-3">
+          <Button onClick={handleDiscoverCategories} type="button" variant="ghost">
+            {isDiscoveringCategories ? 'Loading Categories...' : 'Load Source Categories'}
+          </Button>
           <Button onClick={handlePreviewImport} type="button" variant="secondary">
             {isPreviewing ? 'Loading Preview...' : 'Preview Import'}
           </Button>
@@ -196,6 +240,7 @@ export default function AdminInventoryPage() {
         </div>
 
         {statusMessage ? <p className="mt-4 text-sm text-slate-500 dark:text-slate-300">{statusMessage}</p> : null}
+        {discoveredCategoryCount > 0 ? <p className="mt-2 text-xs text-slate-400 dark:text-slate-400">Discovered category URLs loaded: {discoveredCategoryCount}</p> : null}
 
         {previewItems.length > 0 ? (
           <div className="mt-6 overflow-x-auto">

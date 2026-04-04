@@ -8,6 +8,7 @@ import {
   resolveCatalogBarcode,
 } from '../services/catalog.js';
 import {
+  discoverMarketImportCategoryUrls,
   getSupportedMarketImportSources,
   previewMarketImport,
   syncMarketImportToCatalog,
@@ -24,6 +25,19 @@ export function createProductsRouter({ jwtSecret }) {
     try {
       return res.json({
         sources: getSupportedMarketImportSources(),
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get('/import-categories', authenticateJwt({ secret: jwtSecret }), authorizeRoles(USER_ROLES.SUPER_ADMIN, USER_ROLES.STORE_ADMIN, USER_ROLES.MANAGER), async (req, res, next) => {
+    try {
+      const sourceKey = String(req.query.sourceKey || 'tamimi').trim();
+
+      return res.json({
+        sourceKey,
+        categoryUrls: await discoverMarketImportCategoryUrls(sourceKey),
       });
     } catch (error) {
       return next(error);
@@ -122,6 +136,7 @@ export function createProductsRouter({ jwtSecret }) {
           categoryUrls: payload.categoryUrls,
           maxProducts: payload.maxProducts,
           enrichProducts: payload.enrichProducts !== false,
+          detailEnrichmentLimit: payload.detailEnrichmentLimit,
         });
 
         return res.json({
@@ -151,6 +166,7 @@ export function createProductsRouter({ jwtSecret }) {
           categoryUrls: payload.categoryUrls,
           maxProducts: payload.maxProducts,
           enrichProducts: payload.enrichProducts !== false,
+          detailEnrichmentLimit: payload.detailEnrichmentLimit,
           defaultVatRate: payload.defaultVatRate,
           allowUpdate: payload.allowUpdate !== false,
         });

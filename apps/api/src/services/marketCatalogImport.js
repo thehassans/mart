@@ -17,6 +17,7 @@ const TAMIMI_DEFAULT_CATEGORY_PATHS = [
   '/category/rice--pasta',
   '/category/canned-food',
 ];
+const TAMIMI_CATEGORY_EXCLUDE_PATTERNS = [/\/category\/hot-deals$/i];
 
 const SUPPORTED_SOURCES = {
   tamimi: {
@@ -27,6 +28,10 @@ const SUPPORTED_SOURCES = {
     defaultCategoryUrls: TAMIMI_DEFAULT_CATEGORY_PATHS.map((path) => new URL(path, TAMIMI_BASE_URL).toString()),
   },
 };
+
+const MARKET_IMPORT_CATEGORY_CACHE_TTL_MS = 15 * 60 * 1000;
+const IMPORTED_PRODUCTS_RESPONSE_LIMIT = 25;
+const marketImportCategoryCache = new Map();
 
 function decodeHtmlEntities(value) {
   return String(value || '')
@@ -299,6 +304,7 @@ export function getSupportedMarketImportSources() {
     baseUrl: source.baseUrl,
     categorySitemapUrl: source.categorySitemapUrl,
     defaultCategoryUrls: source.defaultCategoryUrls,
+    defaultCategoryResolution: source.categorySitemapUrl ? 'sitemap' : 'static',
   }));
 }
 
@@ -307,59 +313,165 @@ export async function discoverTamimiCategoryUrls() {
   return parseXmlLocs(xml);
 }
 
-function resolveRequestedCategoryUrls(source, categoryUrls) {
-  const requested = Array.isArray(categoryUrls) ? categoryUrls.map((value) => String(value || '').trim()).filter(Boolean) : [];
-  return requested.length > 0 ? requested : source.defaultCategoryUrls;
+function filterTamimiCategoryUrls(categoryUrls) {
+  return Array.from(new Map(categoryUrls.map((url) => [String(url || '').trim(), String(url || '').trim()])).values()).filter((url) => {
+    if (!url) {
+      return false;
+    }
+
+    return !TAMIMI_CATEGORY_EXCLUDE_PATTERNS.some((pattern) => pattern.test(url));
+  });
 }
 
-function clampMaxProducts(value, fallback = 120) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return fallback;
-  }
-
-  return Math.min(parsed, 500);
-}
-
-export async function previewMarketImport({ sourceKey = 'tamimi', categoryUrls = [], maxProducts = 120, enrichProducts = true }) {
+export async function discoverMarketImportCategoryUrls(sourceKey = 'tamimi') {
   const source = SUPPORTED_SOURCES[sourceKey];
 
   if (!source) {
     throw new Error('Unsupported market import source.');
   }
 
-  const resolvedCategoryUrls = resolveRequestedCategoryUrls(source, categoryUrls);
+  const cacheKey = source.key;
+  const cachedEntry = marketImportCategoryCache.get(cacheKey);
+  if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+    return cachedEntry.categoryUrls;
+  }
+
+  let categoryUrls = source.defaultCategoryUrls;
+
+  if (source.key === 'tamimi') {
+    categoryUrls = filterTamimiCategoryUrls(await discoverTamimiCategoryUrls());
+  }
+
+  marketImportCategoryCache.set(cacheKey, {
+    categoryUrls,
+    expiresAt: Date.now() + MARKET_IMPORT_CATEGORY_CACHE_TTL_MS,
+  });
+
+  return categoryUrls;
+}
+
+async function resolveRequestedCategoryUrls(source, categoryUrls) {
+  const requested = Array.isArray(categoryUrls) ? categoryUrls.map((value) => String(value || '').trim()).filter(Boolean) : [];
+
+  if (requested.length > 0) {
+    return source.key === 'tamimi' ? filterTamimiCategoryUrls(requested) : requested;
+  }
+
+  if (source.categorySitemapUrl) {
+    return discoverMarketImportCategoryUrls(source.key);
+  }
+
+  return source.defaultCategoryUrls;
+}
+
+function clampMaxProducts(value, fallback = 250) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return Math.min(parsed, 2000);
+}
+
+function clampDetailEnrichmentLimit(value, fallback = 60) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+
+  return Math.min(parsed, 250);
+}
+
+async function mapWithConcurrencyLimit(items, limit, mapper) {
+  const normalizedItems = Array.isArray(items) ? items : [];
+  const concurrency = Math.max(1, Number(limit) || 1);
+  const results = new Array(normalizedItems.length);
+  let currentIndex = 0;
+
+  async function worker() {
+    while (currentIndex < normalizedItems.length) {
+      const targetIndex = currentIndex;
+      currentIndex += 1;
+      results[targetIndex] = await mapper(normalizedItems[targetIndex], targetIndex);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, normalizedItems.length || 1) }, () => worker()));
+  return results;
+}
+
+export async function previewMarketImport({ sourceKey = 'tamimi', categoryUrls = [], maxProducts = 250, enrichProducts = true, detailEnrichmentLimit = 60 }) {
+  const source = SUPPORTED_SOURCES[sourceKey];
+
+  if (!source) {
+    throw new Error('Unsupported market import source.');
+  }
+
+  const resolvedCategoryUrls = await resolveRequestedCategoryUrls(source, categoryUrls);
   const limitedMaxProducts = clampMaxProducts(maxProducts);
+  const limitedDetailEnrichment = enrichProducts ? clampDetailEnrichmentLimit(detailEnrichmentLimit, Math.min(60, limitedMaxProducts)) : 0;
+  const scannedCategoryUrls = resolvedCategoryUrls.slice(0, Math.max(1, limitedMaxProducts));
+  const categoryResults = await mapWithConcurrencyLimit(scannedCategoryUrls, 4, async (categoryUrl) => {
+    try {
+      const html = await fetchText(categoryUrl);
+      return {
+        ok: true,
+        categoryUrl,
+        items: parseTamimiCategoryProducts(html, categoryUrl),
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        categoryUrl,
+        message: error.message || 'Unable to fetch category page.',
+        items: [],
+      };
+    }
+  });
+
+  const failedCategoryUrls = categoryResults
+    .filter((result) => !result.ok)
+    .map((result) => ({
+      url: result.categoryUrl,
+      message: result.message,
+    }));
   const discovered = [];
 
-  for (const categoryUrl of resolvedCategoryUrls) {
-    if (discovered.length >= limitedMaxProducts) {
-      break;
-    }
-
-    const html = await fetchText(categoryUrl);
-    const categoryItems = parseTamimiCategoryProducts(html, categoryUrl);
-
-    for (const item of categoryItems) {
+  for (const result of categoryResults) {
+    for (const item of result.items) {
       if (discovered.length >= limitedMaxProducts) {
         break;
       }
 
       discovered.push(item);
     }
+
+    if (discovered.length >= limitedMaxProducts) {
+      break;
+    }
   }
 
   const uniqueItems = Array.from(new Map(discovered.map((item) => [item.slug, item])).values()).slice(0, limitedMaxProducts);
-  const items = [];
+  const baseItems = [...uniqueItems];
+  const items = [...baseItems];
+  let enrichedCount = 0;
 
-  for (const item of uniqueItems) {
-    items.push(enrichProducts ? await enrichTamimiProduct(item) : item);
+  if (limitedDetailEnrichment > 0) {
+    const enrichedItems = await mapWithConcurrencyLimit(baseItems.slice(0, limitedDetailEnrichment), 6, async (item) => enrichTamimiProduct(item));
+    for (const [index, item] of enrichedItems.entries()) {
+      items[index] = item;
+      enrichedCount += 1;
+    }
   }
 
   return {
     source: source.key,
     sourceLabel: source.label,
     categoryUrls: resolvedCategoryUrls,
+    categoriesScanned: scannedCategoryUrls.length,
+    failedCategoryCount: failedCategoryUrls.length,
+    failedCategoryUrls,
+    enrichedCount,
     totalDiscovered: items.length,
     items,
   };
@@ -423,19 +535,25 @@ export async function syncMarketImportToCatalog({
   tenantId,
   sourceKey = 'tamimi',
   categoryUrls = [],
-  maxProducts = 120,
+  maxProducts = 250,
   enrichProducts = true,
+  detailEnrichmentLimit = 60,
   defaultVatRate = 15,
   allowUpdate = true,
 }) {
-  const preview = await previewMarketImport({ sourceKey, categoryUrls, maxProducts, enrichProducts });
+  const preview = await previewMarketImport({ sourceKey, categoryUrls, maxProducts, enrichProducts, detailEnrichmentLimit });
   const summary = {
     source: preview.source,
     sourceLabel: preview.sourceLabel,
     discovered: preview.items.length,
+    categoriesScanned: preview.categoriesScanned,
+    failedCategoryCount: preview.failedCategoryCount,
+    enrichedCount: preview.enrichedCount,
     created: 0,
     updated: 0,
     skipped: 0,
+    importedProductsLimit: IMPORTED_PRODUCTS_RESPONSE_LIMIT,
+    importedProductsTruncated: false,
     importedProducts: [],
   };
 
@@ -481,7 +599,11 @@ export async function syncMarketImportToCatalog({
       summary.created += 1;
     }
 
-    summary.importedProducts.push(savedProduct);
+    if (summary.importedProducts.length < IMPORTED_PRODUCTS_RESPONSE_LIMIT) {
+      summary.importedProducts.push(savedProduct);
+    } else {
+      summary.importedProductsTruncated = true;
+    }
   }
 
   return summary;
